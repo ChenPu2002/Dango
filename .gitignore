@@ -1,0 +1,22 @@
+# Node
+node_modules/
+.expo/
+
+# 密钥（本地保留，不入库）
+xinli-app/src/secrets.js
+
+# 构建产物
+xinli-app/android/.gradle/
+xinli-app/android/app/build/
+xinli-app/android/build/
+xinli-app/android/local.properties
+xinli-app/dist/
+*.hbc
+
+# 用户数据（隐私）
+files/
+.cli-*.json
+
+# 杂项
+.DS_Store
+*.log

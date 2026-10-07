@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>心力球 · Demo</title>
+<style>
+  :root{
+    --bg:#FAF6F3; --card:#FFFFFF;
+    --primary:#8A7BFF; --primary-soft:#ECE8FF;
+    --pink:#FF9FBB; --pink-soft:#FFE9F0;
+    --mint:#5FC9A8; --mint-soft:#E2F7EF;
+    --peach:#FFB48A; --peach-soft:#FFF0E6;
+    --warn:#FF7A7A; --warn-soft:#FFE9E9;
+    --text:#3D3A4E; --sub:#9B93AE; --line:#F0EBE6;
+    --r:18px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:linear-gradient(160deg,#EFEBFF 0%,#FBF3EE 50%,#EAF7F1 100%);
+    min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--text);
+  }
+  .deskhint{position:fixed;top:14px;left:0;right:0;text-align:center;font-size:12px;color:var(--sub)}
+  .phone{
+    width:390px;height:812px;background:var(--bg);border-radius:44px;box-shadow:0 30px 80px rgba(80,60,120,.25),0 0 0 10px #1d1a22,0 0 0 12px #3a3546;
+    overflow:hidden;position:relative;display:flex;flex-direction:column;
+  }
+  @media (max-width:430px){
+    body{background:var(--bg)}
+    .deskhint{display:none}
+    .phone{width:100vw;height:100vh;height:100dvh;border-radius:0;box-shadow:none}
+  }
+  .statusbar{display:flex;justify-content:space-between;padding:14px 22px 4px;font-size:13px;font-weight:600;color:var(--text)}
+  .scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 16px 100px;scrollbar-width:none}
+  .scroll::-webkit-scrollbar{display:none}
+
+  /* ---------- header ---------- */
+  .hello{margin-top:10px}
+  .hello h1{font-size:22px;font-weight:800;letter-spacing:.3px}
+  .hello p{font-size:12.5px;color:var(--sub);margin-top:3px}
+  .devpill{
+    display:flex;gap:10px;align-items:center;background:var(--card);border-radius:14px;padding:10px 12px;margin-top:12px;
+    box-shadow:0 4px 14px rgba(140,120,200,.08);font-size:12px;
+  }
+  .devpill b{font-size:12.5px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 3px var(--mint-soft);flex:none}
+  .dot.rec{background:#FF6B81;box-shadow:0 0 0 3px var(--warn-soft);animation:pl 1.2s infinite}
+  .dot.off{background:#C9C2D6;box-shadow:none}
+  @keyframes pl{50%{opacity:.3}}
+  .devpill .sp{flex:1}
+  .devpill .grey{color:var(--sub)}
+
+  /* ---------- cards ---------- */
+  .card{background:var(--card);border-radius:var(--r);padding:16px;margin-top:12px;box-shadow:0 4px 14px rgba(140,120,200,.07)}
+  .sect{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;margin:18px 2px 2px}
+  .sect .more{margin-left:auto;font-size:12px;color:var(--sub);font-weight:500}
+
+  .echo-btn{
+    margin-top:14px;border:none;width:100%;border-radius:16px;padding:14px;
+    background:linear-gradient(95deg,#8A7BFF,#B48BF5 55%,#FF9FBB);color:#fff;font-size:15px;font-weight:700;
+    box-shadow:0 8px 20px rgba(150,110,240,.35);cursor:pointer;font-family:inherit;
+  }
+  .echo-btn small{display:block;font-weight:400;font-size:11px;opacity:.9;margin-top:2px}
+
+  /* timeline */
+  .tl{position:relative;margin-top:12px;padding-left:20px}
+  .tl::before{content:"";position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:var(--line);border-radius:2px}
+  .tl-item{position:relative;margin-bottom:12px}
+  .tl-item::before{content:"";position:absolute;left:-18.5px;top:20px;width:11px;height:11px;border-radius:50%;background:#fff;border:3px solid var(--primary)}
+  .tl-item.warn::before{border-color:var(--sub)}
+  .tl-item.mint::before{border-color:var(--mint)}
+  .tl-card{background:var(--card);border-radius:var(--r);padding:14px;box-shadow:0 4px 14px rgba(140,120,200,.07);cursor:pointer}
+  .tl-head{display:flex;align-items:baseline;gap:8px}
+  .tl-time{font-size:11.5px;color:var(--sub);font-variant-numeric:tabular-nums}
+  .tl-title{font-size:14.5px;font-weight:700;flex:1}
+  .chev{font-size:11px;color:var(--sub);transition:transform .25s}
+  .open .chev{transform:rotate(180deg)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{font-size:10.5px;padding:3px 9px;border-radius:99px;background:var(--primary-soft);color:#6B5FD8;font-weight:600}
+  .chip.g{background:var(--mint-soft);color:#2E9B7C}
+  .chip.p{background:var(--pink-soft);color:#D96A93}
+  .chip.w{background:#F3F0F7;color:var(--sub)}
+  .detail{max-height:0;overflow:hidden;transition:max-height .3s ease}
+  .open .detail{max-height:600px}
+  .detail-in{padding-top:10px;border-top:1px dashed var(--line);margin-top:10px;font-size:12.5px;line-height:1.75;color:#5A5570}
+  .detail-in li{margin-left:16px}
+  .todo{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12.5px}
+  .todo .cb{width:16px;height:16px;border-radius:5px;border:1.5px solid #CFC7E8;flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;cursor:pointer}
+  .todo.done .cb{background:var(--primary);border-color:var(--primary)}
+  .todo.done span{text-decoration:line-through;color:var(--sub)}
+  .mini-btn{display:inline-block;margin-top:8px;font-size:12px;font-weight:700;color:var(--primary);cursor:pointer}
+
+  /* notes */
+  .coursebar{display:flex;gap:8px;overflow-x:auto;padding:4px 2px;margin-top:12px;scrollbar-width:none}
+  .coursebar::-webkit-scrollbar{display:none}
+  .cbtn{flex:none;padding:8px 16px;border-radius:99px;background:#fff;font-size:13px;font-weight:600;color:var(--sub);box-shadow:0 3px 10px rgba(140,120,200,.06);cursor:pointer}
+  .cbtn.on{background:var(--primary);color:#fff}
+  .exam{display:flex;align-items:center;gap:12px;background:linear-gradient(100deg,#FFF0F4,#F3EFFF);border-radius:var(--r);padding:14px;margin-top:12px}
+  .exam .n{font-size:26px;font-weight:800;color:#D96A93}
+  .exam .t{font-size:12.5px;color:#6B5FD8;line-height:1.5}
+  .bar{height:8px;background:#EFEAF9;border-radius:99px;margin-top:8px;overflow:hidden;flex:1}
+  .bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#8A7BFF,#FF9FBB)}
+  .note-li{display:flex;gap:8px;font-size:12.5px;line-height:1.7;color:#5A5570;padding:3px 0}
+  .note-li b{color:var(--text)}
+  .sendrow{display:flex;gap:8px;margin-top:12px}
+  .sbtn{flex:1;border:1.5px solid var(--primary-soft);background:#fff;color:var(--primary);border-radius:12px;padding:9px 0;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
+  .fc-wrap{display:flex;gap:10px;overflow-x:auto;padding:6px 2px;scrollbar-width:none}
+  .fc-wrap::-webkit-scrollbar{display:none}
+  .fc{flex:none;width:210px;height:150px;perspective:800px;cursor:pointer}
+  .fc-in{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform .5s}
+  .fc.flip .fc-in{transform:rotateY(180deg)}
+  .fc-f,.fc-b{position:absolute;inset:0;backface-visibility:hidden;border-radius:16px;padding:16px;display:flex;flex-direction:column}
+  .fc-f{background:linear-gradient(140deg,#8A7BFF,#B48BF5);color:#fff;justify-content:center;text-align:center;font-size:15px;font-weight:700;line-height:1.6}
+  .fc-f small{font-weight:400;font-size:10.5px;opacity:.8;margin-bottom:8px}
+  .fc-b{background:#fff;transform:rotateY(180deg);justify-content:center;font-size:13px;line-height:1.7;color:#5A5570;border:1.5px solid var(--primary-soft)}
+  .fc-b small{color:var(--sub);font-size:10px;text-align:center;margin-top:10px}
+
+  /* buddy */
+  .ring-wrap{display:flex;align-items:center;gap:14px}
+  .qk{display:flex;gap:10px;align-items:flex-start;padding:11px 0;border-bottom:1px dashed var(--line)}
+  .qk:last-child{border-bottom:none}
+  .qk .ico{font-size:20px}
+  .qk b{font-size:13.5px}
+  .qk p{font-size:11.5px;color:var(--sub);margin-top:2px}
+  .qk .due{margin-left:auto;flex:none;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:99px;background:var(--warn-soft);color:#D06A6A}
+  .voice{display:flex;align-items:center;gap:10px;background:var(--primary-soft);border-radius:14px;padding:10px 12px;margin-top:10px}
+  .play{width:32px;height:32px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer}
+  .wave{flex:1;display:flex;align-items:center;gap:2px;height:20px}
+  .wave i{flex:1;background:#B9AFF2;border-radius:2px}
+  .voice small{font-size:10px;color:#6B5FD8}
+
+  /* mood */
+  .mood-face{font-size:30px;text-align:center}
+  .mood-tags{display:flex;justify-content:center;gap:8px;margin-top:6px}
+  .mtag{font-size:11px;padding:3px 10px;border-radius:99px;background:var(--pink-soft);color:#D96A93;font-weight:600}
+  .hl{display:flex;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:12.5px;line-height:1.6}
+  .hl:last-child{border:none}
+  .hl .t{flex:none;font-size:10.5px;color:var(--sub);width:38px;padding-top:2px;font-variant-numeric:tabular-nums}
+  .hole textarea{width:100%;height:64px;border:none;background:transparent;resize:none;font-size:13px;font-family:inherit;color:var(--text);outline:none}
+  .send{border:none;background:var(--primary);color:#fff;border-radius:99px;padding:8px 18px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit}
+  .aireply{background:var(--pink-soft);border-radius:14px;padding:12px;font-size:12.5px;line-height:1.8;color:#8A5570;margin-top:10px;display:none}
+  .aireply b{color:#D96A93}
+
+  /* me */
+  .toggle{width:44px;height:26px;border-radius:99px;background:#E5E0EC;position:relative;transition:.2s;cursor:pointer;flex:none}
+  .toggle::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 2px 5px rgba(0,0,0,.15)}
+  .toggle.on{background:var(--mint)}
+  .toggle.on::after{left:21px}
+  .prow{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px dashed var(--line);font-size:13.5px}
+  .prow:last-child{border:none}
+  .prow .ico{font-size:18px}
+  .prow p{font-size:11px;color:var(--sub);margin-top:2px;line-height:1.4}
+  .prow .r{margin-left:auto;font-size:12px;color:var(--sub);font-weight:600}
+  .burn{width:100%;border:1.5px solid #F3B9B9;background:var(--warn-soft);color:#D06A6A;border-radius:14px;padding:12px;font-size:13.5px;font-weight:700;cursor:pointer;margin-top:12px;font-family:inherit}
+
+  /* devices tab */
+  .dcard{background:var(--card);border-radius:var(--r);padding:16px;margin-top:12px;box-shadow:0 4px 14px rgba(140,120,200,.07)}
+  .dhead{display:flex;align-items:center;gap:10px}
+  .dhead .big{font-size:26px}
+  .dhead b{font-size:14.5px}
+  .dhead p{font-size:10.5px;color:var(--sub);margin-top:2px}
+  .st{margin-left:auto;flex:none;font-size:10px;font-weight:700;padding:3px 10px;border-radius:99px;background:var(--mint-soft);color:#2E9B7C}
+  .st.rec{background:var(--warn-soft);color:#D06A6A}
+  .st.off{background:#F3F0F7;color:var(--sub)}
+  .statrow{display:flex;gap:14px;margin-top:12px}
+  .stat{flex:1}
+  .stat label{font-size:10px;color:var(--sub)}
+  .stat b{font-size:13px;display:block;margin-top:1px}
+  .abtns{display:flex;gap:8px;margin-top:14px}
+  .abtn{flex:1;border:1.5px solid var(--primary-soft);background:#fff;color:var(--primary);border-radius:10px;padding:9px 2px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+  .abtn.danger{border-color:#F3B9B9;background:var(--warn-soft);color:#D06A6A}
+  .task{display:flex;gap:10px;align-items:center;padding:11px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
+  .task:last-child{border:none}
+  .task .st-ico{flex:none;font-size:16px}
+  .task b{font-size:12.5px}
+  .task p{font-size:10.5px;color:var(--sub);margin-top:2px}
+  .task .r{margin-left:auto;flex:none;font-size:10px;font-weight:700;color:var(--sub)}
+  .task.done .r{color:var(--mint)}
+  .spin{display:inline-block;animation:rot 1s linear infinite}
+  @keyframes rot{to{transform:rotate(360deg)}}
+  .code{background:#2E2A3D;color:#D9D3EC;border-radius:10px;padding:10px 12px;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.9;margin-top:8px;overflow-x:auto;white-space:pre}
+  .code b{color:#9F8CFF}
+
+  /* tabbar */
+  .tabbar{
+    position:absolute;left:0;right:0;bottom:0;background:rgba(255,255,255,.92);backdrop-filter:blur(14px);
+    display:flex;padding:8px 4px 22px;border-top:1px solid var(--line);
+  }
+  .tabbtn{flex:1;border:none;background:none;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--sub);cursor:pointer;font-family:inherit;font-weight:600}
+  .tabbtn .em{font-size:19px;filter:grayscale(1);opacity:.55;transition:.15s}
+  .tabbtn.on{color:var(--primary)}
+  .tabbtn.on .em{filter:none;opacity:1;transform:translateY(-1px) scale(1.12)}
+
+  /* modal & toast */
+  .mask{position:absolute;inset:0;background:rgba(40,30,60,.45);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:.25s;z-index:30;display:flex;align-items:flex-end}
+  .mask.show{opacity:1;pointer-events:auto}
+  .sheet{background:var(--bg);border-radius:26px 26px 0 0;padding:22px 20px 30px;transform:translateY(40px);transition:.25s;max-height:82%;overflow-y:auto;scrollbar-width:none}
+  .mask.show .sheet{transform:none}
+  .sheet::-webkit-scrollbar{display:none}
+  .grab{width:40px;height:4px;border-radius:99px;background:#DDD6EC;margin:0 auto 14px}
+  .sheet h3{font-size:17px;font-weight:800}
+  .sheet .sub2{font-size:11.5px;color:var(--sub);margin:4px 0 12px}
+  .toast{position:absolute;left:50%;bottom:110px;transform:translate(-50%,10px);background:#3D3A4E;color:#fff;font-size:12.5px;padding:10px 18px;border-radius:99px;opacity:0;transition:.25s;z-index:50;pointer-events:none;max-width:85%;text-align:center;line-height:1.5}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  svg text{font-family:inherit}
+</style>
+</head>
+<body>
+<div class="deskhint">📱 建议用手机打开，或按 F12 切换到手机视口（宽 ≤ 430px 自适应全屏）</div>
+<div class="phone">
+  <div class="statusbar"><span>21:36</span><span>📶 🔋98%</span></div>
+
+  <!-- ============ 今日 ============ -->
+  <section class="scroll" id="tab-today">
+    <div class="hello">
+      <h1>小满，今天也辛苦啦 ☁️</h1>
+      <p>11月18日 周二 · 已陪你 5小时12分 · 摘要 6 篇</p>
+    </div>
+    <div class="devpill" id="ballPill" onclick="switchTab('devices')" style="cursor:pointer">
+      <span class="dot off" id="pillDot"></span><b id="pillName">心力球</b>
+      <span class="grey" id="pillStat">未连接</span>
+      <span class="sp"></span>
+      <span class="grey" id="pillPc">›</span>
+    </div>
+
+    <button class="echo-btn" onclick="openModal('echoModal')">
+      🌙 今晚的「今日拾光」已生成
+      <small>3 件小事 · 1 句想对你说的话 · 点击查看</small>
+    </button>
+
+    <div class="sect">🕐 今天的时间线 <span class="more">全部 14 段</span></div>
+
+    <div class="tl">
+      <div class="tl-item open">
+        <div class="tl-card" onclick="this.parentElement.classList.toggle('open')">
+          <div class="tl-head"><span class="tl-time">08:00–09:40</span><span class="tl-title">高等数学 · 三教402</span><span class="chev">▾</span></div>
+          <div class="chips"><span class="chip">AI笔记 12 条</span><span class="chip p">例题 2 道</span><span class="chip w">✓ 已归档到电脑</span></div>
+          <div class="detail"><div class="detail-in">
+            <li><b>泰勒公式</b>：用多项式局部逼近 f(x)，重点记 3 个常用展开 + 余项形式</li>
+            <li><b>例题2</b>：求 eˣ 在 x=0 处的三阶展开（你已经整理成 3 步解法）</li>
+            <li><b>老师划重点</b>：期中考第三章～第五章，泰勒必出大题 ⭐</li>
+            <div class="mini-btn" onclick="event.stopPropagation();switchTab('notes')">去复习今日卡片 →</div>
+          </div></div>
+        </div>
+      </div>
+
+      <div class="tl-item warn">
+        <div class="tl-card" onclick="this.parentElement.classList.toggle('open')">
+          <div class="tl-head"><span class="tl-time">10:05</span><span class="tl-title">走廊 · 遇到同学</span><span class="chev">▾</span></div>
+          <div class="chips"><span class="chip w">38s · 非白名单人声</span><span class="chip w">已自动丢弃</span></div>
+          <div class="detail"><div class="detail-in">
+            🛡️ 只保留你和授权好友的声音。这段未上传、未转写，已从设备本地删除。<br>
+            <span style="color:var(--sub);font-size:11.5px">（隐私即卖点：让用户敢戴、敢开）</span>
+          </div></div>
+        </div>
+      </div>
+
+      <div class="tl-item">
+        <div class="tl-card" onclick="this.parentElement.classList.toggle('open')">
+          <div class="tl-head"><span class="tl-time">12:30–13:10</span><span class="tl-title">小组讨论 · 市场调研作业</span><span class="chev">▾</span></div>
+          <div class="chips"><span class="chip">3 位说话人</span><span class="chip p">待办 3 条</span><span class="chip g">分工已提取</span></div>
+          <div class="detail"><div class="detail-in">
+            <div class="todo done"><div class="cb" onclick="event.stopPropagation();tick(this)">✓</div><span>你：问卷题目周四前出 15 道</span></div>
+            <div class="todo"><div class="cb" onclick="event.stopPropagation();tick(this)"></div><span>阿琳：找 3 篇参考文献</span></div>
+            <div class="todo"><div class="cb" onclick="event.stopPropagation();tick(this)"></div><span>可可：约周五下午发问卷</span></div>
+            <div class="mini-btn" onclick="event.stopPropagation();toast('已复制到群公告 📋')">复制到群公告 →</div>
+          </div></div>
+        </div>
+      </div>
+
+      <div class="tl-item mint">
+        <div class="tl-card" onclick="this.parentElement.classList.toggle('open')">
+          <div class="tl-head"><span class="tl-time">16:00–17:10</span><span class="tl-title">图书馆自习</span><span class="chev">▾</span></div>
+          <div class="chips"><span class="chip g">专注 52min</span><span class="chip w">摸手机 3 次</span></div>
+          <div class="detail"><div class="detail-in">
+            超过你 82% 的自习记录 🎉 最长一段专注 31 分钟，环境安静，适合安排高数错题。
+          </div></div>
+        </div>
+      </div>
+
+      <div class="tl-item">
+        <div class="tl-card" onclick="this.parentElement.classList.toggle('open')">
+          <div class="tl-head"><span class="tl-time">19:00–20:30</span><span class="tl-title">文艺部例会 · 社团</span><span class="chev">▾</span></div>
+          <div class="chips"><span class="chip">纪要 8 条</span><span class="chip p">你认领 2 项</span></div>
+          <div class="detail"><div class="detail-in">
+            <li>元旦晚会初定 12/27，节目单本周五出 v1</li>
+            <li><b>你负责</b>：主视觉海报（周五前）+ 主持稿框架（下周三前）</li>
+            <div class="mini-btn" onclick="event.stopPropagation();switchTab('buddy')">已加入我的待办 →</div>
+          </div></div>
+        </div>
+      </div>
+
+      <div class="tl-item mint">
+        <div class="tl-card" onclick="this.parentElement.classList.toggle('open')">
+          <div class="tl-head"><span class="tl-time">21:30</span><span class="tl-title">归档到电脑 · 自动</span><span class="chev">▾</span></div>
+          <div class="chips"><span class="chip g">已完成</span><span class="chip">局域网直连</span></div>
+          <div class="detail"><div class="detail-in">
+            今日原始音频 1.2G 已通过局域网归档到电脑「拾光归档」盘。<br>
+            <div class="mini-btn" onclick="event.stopPropagation();switchTab('devices')">查看设备 →</div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 笔记 ============ -->
+  <section class="scroll" id="tab-notes" style="display:none">
+    <div class="hello"><h1>课堂笔记本 📚</h1><p>课表自动关联 · 12 门课已导入教务系统</p></div>
+
+    <div class="coursebar">
+      <span class="cbtn on">高等数学</span><span class="cbtn">管理学</span><span class="cbtn">大学英语</span><span class="cbtn">毛概</span><span class="cbtn">微观经济</span>
+    </div>
+
+    <div class="exam">
+      <div class="n">6<span style="font-size:13px">天</span></div>
+      <div class="t"><b>距高数期中考试</b><br>已为你生成「抱佛脚卡片」32 张 · 已复习 12 张
+        <div class="bar"><i style="width:38%"></i></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:800;font-size:14px;margin-bottom:6px">📝 11.18 泰勒公式 · AI 笔记</div>
+      <div class="note-li">• <span><b>核心思想</b>：用多项式 p(x) 局部逼近复杂函数 f(x)，误差由余项 Rₙ(x) 控制</span></div>
+      <div class="note-li">• <span><b>必背 3 展开</b>：eˣ、sin x、ln(1+x) 在 x₀=0 处（麦克劳林）</span></div>
+      <div class="note-li">• <span><b>高频考点</b>：用泰勒公式求极限 / 证明不等式，老师点名「期中必出大题」⭐</span></div>
+      <div class="note-li">• <span><b>你的卡点</b>：上次作业第 5 题余项写错了 o(xⁿ) 的位置，本次已标重点</span></div>
+      <div class="sendrow">
+        <button class="sbtn" onclick="sendTask('word')">📄 电脑转 Word 提纲</button>
+        <button class="sbtn" onclick="sendTask('print')">🖨️ 打印卡片</button>
+      </div>
+    </div>
+
+    <div class="sect">🃏 抱佛脚卡片 <span class="more">点击卡片翻面</span></div>
+    <div class="fc-wrap">
+      <div class="fc" onclick="this.classList.toggle('flip')"><div class="fc-in">
+        <div class="fc-f"><small>卡片 13/32</small>eˣ 在 x=0 处的三阶泰勒展开是？</div>
+        <div class="fc-b">1 + x + x²/2! + x³/3! + o(x³)<small>来自 11.18 例题2</small></div>
+      </div></div>
+      <div class="fc" onclick="this.classList.toggle('flip')"><div class="fc-in">
+        <div class="fc-f"><small>卡片 14/32</small>泰勒公式是用来干嘛的？</div>
+        <div class="fc-b">用多项式局部逼近复杂函数，误差用余项 Rₙ(x) 控制<small>你答错过 1 次</small></div>
+      </div></div>
+      <div class="fc" onclick="this.classList.toggle('flip')"><div class="fc-in">
+        <div class="fc-f"><small>卡片 15/32</small>老师划的期中范围？</div>
+        <div class="fc-b">第三章～第五章，泰勒公式必出大题 ⭐<small>来自 11.18 课堂</small></div>
+      </div></div>
+    </div>
+
+    <div class="card" style="text-align:center;color:var(--sub);font-size:12px">
+      复习 20 张解锁「考前冲刺模式」· 错题自动回炉 🔁
+    </div>
+  </section>
+
+  <!-- ============ 搭子 ============ -->
+  <section class="scroll" id="tab-buddy" style="display:none">
+    <div class="hello"><h1>我的搭子 🧸</h1><p>长按心力球说一句话，我来帮你记</p></div>
+
+    <div class="card ring-wrap">
+      <svg width="64" height="64" viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r="27" fill="none" stroke="#EFEAF9" stroke-width="8"/>
+        <circle cx="32" cy="32" r="27" fill="none" stroke="#8A7BFF" stroke-width="8" stroke-linecap="round"
+          stroke-dasharray="169.6" stroke-dashoffset="59.4" transform="rotate(-90 32 32)"/>
+        <text x="32" y="37" text-anchor="middle" font-size="14" font-weight="700" fill="#3D3A4E">3/5</text>
+      </svg>
+      <div>
+        <div style="font-weight:800;font-size:14.5px">今日待办 · 还剩 2 件</div>
+        <div style="font-size:11.5px;color:var(--sub);margin-top:3px;line-height:1.6">会议待办已自动汇入<br>完成 1 件 +10 搭子能量 ⚡</div>
+      </div>
+    </div>
+
+    <div class="sect">🎤 语音快记 <span class="more">今天 4 条</span></div>
+    <div class="card">
+      <div class="qk"><span class="ico">📄</span><div><b>论文大纲</b><p>「哎呀大纲周五就要交了…」· 10:12</p></div><span class="due">周五 18:00</span></div>
+      <div class="qk"><span class="ico">📦</span><div><b>取快递 · 中通</b><p>「下课顺路去菜鸟驿站」· 12:41</p></div><span class="due" style="background:var(--peach-soft);color:#C77E52">今晚 20:00</span></div>
+      <div class="qk"><span class="ico">🎨</span><div><b>元旦晚会主视觉海报</b><p>来自文艺部例会 · 19:42</p></div><span class="due" style="background:var(--peach-soft);color:#C77E52">周五</span></div>
+      <div class="qk"><span class="ico">🧋</span><div><b>和小鹿看展</b><p>「周六下午一点半美术馆门口见~」· 20:15</p></div><span class="due" style="background:var(--mint-soft);color:#2E9B7C">周六 14:00</span></div>
+      <div class="voice">
+        <div class="play" onclick="toast('▶ 播放原始语音（设备本地）')">▶</div>
+        <div class="wave">
+          <i style="height:6px"></i><i style="height:12px"></i><i style="height:8px"></i><i style="height:16px"></i><i style="height:10px"></i><i style="height:14px"></i><i style="height:7px"></i><i style="height:11px"></i><i style="height:15px"></i><i style="height:9px"></i><i style="height:13px"></i><i style="height:6px"></i>
+        </div>
+        <small>0:08</small>
+      </div>
+    </div>
+
+    <div class="card" style="text-align:center;color:var(--sub);font-size:12px">
+      💡 快捷指令：「记一下 / 提醒我 / 待会儿要」开头，识别更准
+    </div>
+  </section>
+
+  <!-- ============ 心情 ============ -->
+  <section class="scroll" id="tab-mood" style="display:none">
+    <div class="hello"><h1>心情日记 🌙</h1><p>只属于你 · 默认仅自己可见</p></div>
+
+    <div class="card" style="text-align:center">
+      <div class="mood-face">😌</div>
+      <div style="font-weight:800;font-size:14.5px;margin-top:4px">平静，还有点小开心</div>
+      <div class="mood-tags"><span class="mtag">#有成就感</span><span class="mtag">#被认可</span><span class="mtag">#有点想家</span></div>
+      <svg viewBox="0 0 320 110" style="width:100%;margin-top:12px">
+        <polyline points="10,70 60,58 110,66 160,34 210,52 260,44 310,28" fill="none" stroke="#FF9FBB" stroke-width="3" stroke-linecap="round"/>
+        <polyline points="10,70 60,58 110,66 160,34 210,52 260,44 310,28 310,100 10,100" fill="rgba(255,159,187,.12)" stroke="none"/>
+        <circle cx="310" cy="28" r="5" fill="#FF9FBB"/><circle cx="310" cy="28" r="9" fill="rgba(255,159,187,.25)"/>
+        <text x="10" y="105" font-size="10" fill="#9B93AE">上周三</text>
+        <text x="145" y="105" font-size="10" fill="#9B93AE">周日</text>
+        <text x="292" y="105" font-size="10" fill="#D96A93" font-weight="700">今天</text>
+      </svg>
+    </div>
+
+    <div class="sect">✨ 今天的高光与低谷</div>
+    <div class="card">
+      <div class="hl"><span class="t">14:20</span><span>老师讲到泰勒公式你突然听懂了，小声「哦——」（语气上扬了 30% 😆）</span></div>
+      <div class="hl"><span class="t">13:02</span><span>小组讨论里你说「这个我熟」，你的方案被大家采纳了 ✨</span></div>
+      <div class="hl"><span class="t">17:40</span><span>傍晚有点安静，你说「有点饿，还有点想家」</span></div>
+    </div>
+
+    <div class="sect">🕳️ 树洞 <span class="more">说给球球听</span></div>
+    <div class="card hole">
+      <textarea id="holeText" placeholder="今天有什么想说的吗…（不会出现在任何地方）"></textarea>
+      <div style="text-align:right"><button class="send" onclick="sendHole()">投进树洞</button></div>
+      <div class="aireply" id="aireply"></div>
+    </div>
+  </section>
+
+  <!-- ============ 设备（多端协同）============ -->
+  <section class="scroll" id="tab-devices" style="display:none">
+    <div class="hello"><h1>设备 📡</h1><p>心力球 + 电脑 · CLI 接入后台统一同步</p></div>
+
+    <div id="devList"></div>
+
+    <div class="sect">📡 指令动态 <span class="more" id="feedHint"></span></div>
+    <div class="card" id="cmdFeed"><div style="text-align:center;color:var(--sub);font-size:12px;padding:18px 0">还没有指令 · 点上面设备卡里的按钮试试</div></div>
+
+    <div class="sect">🔌 如何接入设备</div>
+    <div class="card">
+      <div style="font-size:12px;font-weight:700;margin-bottom:2px">电脑端（另开终端）</div>
+      <div class="code"><b>node cli.js start</b> --name "小满的 MacBook"</div>
+      <div style="font-size:12px;font-weight:700;margin:12px 0 2px">心力球设备模拟器（联调用）</div>
+      <div class="code"><b>node cli.js ball</b> --name "心力球"</div>
+      <div style="font-size:12px;font-weight:700;margin:12px 0 2px">查看后台在线设备</div>
+      <div class="code"><b>node cli.js status</b></div>
+    </div>
+
+    <div class="card" style="background:var(--mint-soft);border:none">
+      <div style="font-size:12px;font-weight:700;color:#2E9B7C;margin-bottom:5px">🔒 传输与安全</div>
+      <div style="font-size:11.5px;line-height:1.8;color:#3E8A73">
+        当前版本全程走<b>本地局域网</b>（CLI ↔ 后台 ↔ 手机）；CLI 每 5s 心跳上报，超 15s 判定离线。指令由后台排队、随心跳下发，执行结果实时回传到所有设备。
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 我的 ============ -->
+  <section class="scroll" id="tab-me" style="display:none">
+    <div class="hello"><h1>我的 🛡️</h1><p>隐私是第一功能，不是设置项</p></div>
+
+    <div class="sect">🔐 隐私中心</div>
+    <div class="card">
+      <div class="prow"><span class="ico">🗣️</span><div><b>声纹白名单</b><p>我 · 小鹿（室友·已授权）</p></div><span class="r" onclick="toast('添加好友需对方对着心力球说 3 句话授权 🤝')">管理 ›</span></div>
+      <div class="prow"><span class="ico">🏠</span><div><b>宿舍模式</b><p>22:00–07:00 及围栏内自动暂停录制</p></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+      <div class="prow"><span class="ico">☁️</span><div><b>云端中继</b><p>仅同步指令与摘要 · 端到端加密</p></div><div class="toggle" onclick="this.classList.toggle('on')"></div></div>
+      <div class="prow"><span class="ico">👁️</span><div><b>录制可见性</b><p>录音时心力球呼吸灯常亮，他人可感知</p></div><span class="r">始终开启</span></div>
+    </div>
+    <button class="burn" onclick="burnAll()">🗑️ 一键焚毁 · 删除今日全部原始音频</button>
+
+    <div class="sect">⚙️ 通用</div>
+    <div class="card">
+      <div class="prow"><span class="ico">📅</span><div><b>课表</b><p>已从教务系统导入 12 门课</p></div><span class="r">更新 ›</span></div>
+      <div class="prow" onclick="switchTab('devices')" style="cursor:pointer"><span class="ico">📡</span><div><b>我的设备</b><p>心力球 · 电脑 · 统一后台同步</p></div><span class="r">管理 ›</span></div>
+    </div>
+  </section>
+
+  <!-- ============ tabbar ============ -->
+  <nav class="tabbar">
+    <button class="tabbtn on" data-tab="today" onclick="switchTab('today')"><span class="em">🏠</span>今日</button>
+    <button class="tabbtn" data-tab="notes" onclick="switchTab('notes')"><span class="em">📚</span>笔记</button>
+    <button class="tabbtn" data-tab="buddy" onclick="switchTab('buddy')"><span class="em">🧸</span>搭子</button>
+    <button class="tabbtn" data-tab="mood" onclick="switchTab('mood')"><span class="em">🌙</span>心情</button>
+    <button class="tabbtn" data-tab="devices" onclick="switchTab('devices')"><span class="em">🔮</span>设备</button>
+    <button class="tabbtn" data-tab="me" onclick="switchTab('me')"><span class="em">🛡️</span>我的</button>
+  </nav>
+
+  <!-- ============ 今日拾光 sheet ============ -->
+  <div class="mask" id="echoModal" onclick="if(event.target===this)closeModal('echoModal')">
+    <div class="sheet">
+      <div class="grab"></div>
+      <h3>🌙 11月18日 · 今日拾光</h3>
+      <div class="sub2">由 5 小时录音提炼 · 只处理白名单声音 · 云端生成</div>
+      <div class="card" style="margin-top:0">
+        <div class="hl"><span class="t">事件1</span><span>高数课全程没睡，还听懂了泰勒公式</span></div>
+        <div class="hl"><span class="t">事件2</span><span>小组讨论你的方案被采纳了</span></div>
+        <div class="hl"><span class="t">事件3</span><span>例会认领了海报，周五交——别忘了哦</span></div>
+      </div>
+      <div class="card" style="background:var(--pink-soft)">
+        <div style="font-size:12px;color:#D96A93;font-weight:700;margin-bottom:6px">球球说：</div>
+        <div style="font-size:13.5px;line-height:1.9;color:#8A5570">今天你说「这个我熟」的时候，声音都亮了起来 ✨<br>保持这个状态，周六的展你会喜欢的。<br>想家的话，就给妈妈打个电话吧。</div>
+      </div>
+      <button class="echo-btn" style="margin-top:14px" onclick="closeModal('echoModal');toast('已存入心情日记 💾')">存入心情日记</button>
+    </div>
+  </div>
+
+  <!-- ============ 焚毁 sheet ============ -->
+  <div class="mask" id="burnModal" onclick="if(event.target===this)closeModal('burnModal')">
+    <div class="sheet">
+      <div class="grab"></div>
+      <h3>🗑️ 确认焚毁今日原始音频？</h3>
+      <div class="sub2">共 5h12m · 37 段 · 不可恢复</div>
+      <div class="card" style="margin-top:0">
+        <div class="prow"><span class="ico">📝</span><div><b>AI 笔记与摘要</b><p>保留（已脱敏，不含原始音频）</p></div></div>
+        <div class="prow"><span class="ico">🎙️</span><div><b>原始音频</b><p>从心力球与电脑归档同时删除</p></div><span class="r" style="color:#D06A6A">将删除</span></div>
+      </div>
+      <button class="burn" onclick="closeModal('burnModal');doBurn()">确认焚毁</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* ---------- UI 基础 ---------- */
+function switchTab(name){
+  document.querySelectorAll('.scroll').forEach(s=>s.style.display='none');
+  document.getElementById('tab-'+name).style.display='block';
+  document.querySelectorAll('.tabbtn').forEach(b=>b.classList.toggle('on',b.dataset.tab===name));
+}
+function openModal(id){document.getElementById(id).classList.add('show')}
+function closeModal(id){document.getElementById(id).classList.remove('show')}
+let tTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(tTimer);tTimer=setTimeout(()=>t.classList.remove('show'),2400);
+}
+function tick(cb){cb.parentElement.classList.toggle('done');cb.textContent=cb.parentElement.classList.contains('done')?'✓':''}
+function sendHole(){
+  const v=document.getElementById('holeText').value.trim();
+  if(!v){toast('先说点什么吧 🌙');return}
+  const r=document.getElementById('aireply');
+  r.style.display='block';r.innerHTML='球球正在听…';
+  setTimeout(()=>{
+    r.innerHTML='<b>球球：</b>收到啦，这句只存给你自己看 🌙<br>今天你专注了 52 分钟，超过了 82% 的搭子。想家就打个电话吧，她也在想你。';
+  },900);
+  document.getElementById('holeText').value='';
+}
+
+/* ---------- 设备总线：CLI ↔ 后台 ↔ 手机（参考 multica）---------- */
+const ONLINE=location.protocol.startsWith('http');
+const CMD_LABEL={
+  start_recording:'开始录音',stop_recording:'停止录音',sync:'同步到电脑',burn:'一键焚毁',
+  screenshot:'电脑截屏',find_file:'查找文件',open_downloads:'打开下载',sysinfo:'系统报告',
+  word:'笔记转 Word 提纲',print:'打印卡片'
+};
+let devices=[],feed=[];
+
+const findBall=()=>devices.find(d=>d.type==='ball');
+const findPC =()=>devices.find(d=>d.type==='computer'&&d.online);
+
+async function api(p,opt){
+  const r=await fetch(p,Object.assign({headers:{'Content-Type':'application/json'}},opt||{}));
+  return r.json();
+}
+
+/* 静态兜底数据（file:// 直开时） */
+function demoDevices(){
+  devices=[
+    {id:'demo-ball',type:'ball',name:'心力球',online:true,status:'recording',meta:{battery:76.4,storage:12.41,total:32,session:754},sim:true},
+    {id:'demo-pc',type:'computer',name:'小满的 MacBook',online:true,status:'online',meta:{cpu:23,mem:61,diskFreeGb:214,diskTotalGb:494,uptimeH:5.2,os:'macOS'},sim:true}
+  ];
+}
+
+function fmtAgo(t){const s=Math.round((Date.now()-t)/1000);return s<5?'刚刚':s<60?s+'秒前':Math.round(s/60)+'分钟前'}
+function fmtDur(s){const m=Math.floor(s/60);return m?`${m}分${s%60}秒`:`${s}秒`}
+
+function renderDevices(){
+  const el=document.getElementById('devList');
+  el.innerHTML=devices.map(d=>{
+    if(d.type==='ball'){
+      const rec=d.status==='recording';
+      const stCls=!d.online?'off':(rec?'rec':'');
+      const stTxt=!d.online?'离线':(rec?'● 录音中':'待机');
+      const b=d.meta.battery||0,used=d.meta.storage||0,total=d.meta.total||32;
+      return `<div class="dcard">
+        <div class="dhead"><span class="big">🔮</span>
+          <div><b>${d.name}</b><p>上次心跳 ${fmtAgo(d.lastSeen||Date.now())}${d.sim?' · 演示数据':''}</p></div>
+          <span class="st ${stCls}">${stTxt}</span></div>
+        <div class="statrow">
+          <div class="stat"><label>电量 🔋</label><b>${b.toFixed(0)}%</b><div class="bar"><i style="width:${b}%"></i></div></div>
+          <div class="stat"><label>存储 💾</label><b>${used.toFixed(1)} / ${total} G</b><div class="bar"><i style="width:${used/total*100}%"></i></div></div>
+        </div>
+        ${rec?`<div style="margin-top:10px;font-size:11.5px;color:#D06A6A;font-weight:700">⏺ 本段已录 ${fmtDur(d.meta.session||0)}</div>`:''}
+        <div class="abtns">
+          ${rec
+            ?`<button class="abtn" onclick="sendCmdById('${d.id}','stop_recording')">⏸ 停止</button>
+              <button class="abtn" onclick="sendCmdById('${d.id}','sync')">🔄 同步到电脑</button>`
+            :`<button class="abtn" onclick="sendCmdById('${d.id}','start_recording')">⏺ 开始录音</button>
+              <button class="abtn" onclick="sendCmdById('${d.id}','sync')">🔄 同步到电脑</button>`}
+          <button class="abtn danger" onclick="sendCmdById('${d.id}','burn')">🔥 焚毁</button>
+        </div>
+      </div>`;
+    }
+    const m=d.meta||{};
+    return `<div class="dcard">
+      <div class="dhead"><span class="big">💻</span>
+        <div><b>${d.name}</b><p>${m.os||''} · 上次心跳 ${fmtAgo(d.lastSeen||Date.now())}</p></div>
+        <span class="st ${d.online?'':'off'}">${d.online?'● 在线':'离线'}</span></div>
+      <div class="statrow">
+        <div class="stat"><label>CPU</label><b>${m.cpu??'--'}%</b></div>
+        <div class="stat"><label>内存</label><b>${m.mem??'--'}%</b></div>
+        <div class="stat"><label>磁盘剩余</label><b>${m.diskFreeGb??'--'}G</b></div>
+        <div class="stat"><label>已运行</label><b>${m.uptimeH??'--'}h</b></div>
+      </div>
+      <div class="abtns">
+        <button class="abtn" onclick="sendCmdById('${d.id}','screenshot')">📸 截屏</button>
+        <button class="abtn" onclick="sendCmdById('${d.id}','find_file',{q:'论文'})">🔍 找文件</button>
+        <button class="abtn" onclick="sendCmdById('${d.id}','open_downloads')">📂 打开下载</button>
+        <button class="abtn" onclick="sendCmdById('${d.id}','sysinfo')">📊 系统报告</button>
+      </div>
+    </div>`;
+  }).join('')||`<div class="card" style="text-align:center;color:var(--sub);font-size:12.5px;padding:22px 0;line-height:2">
+    还没有设备接入<br>在电脑上运行下方 CLI 命令，设备会实时出现在这里</div>`;
+  updatePill();
+}
+
+function updatePill(){
+  const ball=findBall(),pc=devices.find(d=>d.type==='computer');
+  const dot=document.getElementById('pillDot'),name=document.getElementById('pillName'),
+        stat=document.getElementById('pillStat'),p=document.getElementById('pillPc');
+  if(ball&&ball.online){
+    const rec=ball.status==='recording';
+    dot.className='dot'+(rec?' rec':'');
+    name.textContent=ball.name;
+    stat.textContent=`🔋${(ball.meta.battery||0).toFixed(0)}% · ${rec?'录音中':'待机'}`;
+    stat.style.color=rec?'#D06A6A':'';
+  }else{dot.className='dot off';name.textContent='心力球';stat.textContent='未连接';stat.style.color='';}
+  p.textContent=pc?(pc.online?'电脑 在线 · ›':'电脑 离线 · ›'):'›';
+}
+
+function renderFeed(){
+  document.getElementById('feedHint').textContent=feed.length?`共 ${feed.length} 条`:'';
+  document.getElementById('cmdFeed').innerHTML=feed.length?feed.map(f=>`
+    <div class="task ${f.status}" id="f-${f.id}">
+      <span class="st-ico">${f.status==='done'?'✅':f.status==='run'?'⚙️':'📤'}</span>
+      <div><b>${f.name}</b><p id="f-${f.id}-d">${f.detail||('→ '+f.dev)}</p></div>
+      <span class="r">${f.status==='done'?'完成 ✓':f.status==='run'?'<span class="spin">⟳</span>':'已下发'}</span>
+    </div>`).join('')
+    :'<div style="text-align:center;color:var(--sub);font-size:12px;padding:18px 0">还没有指令 · 点上面设备卡里的按钮试试</div>';
+}
+function addFeed(item){feed.unshift(item);if(feed.length>10)feed.length=10;renderFeed()}
+function setFeed(id,patch){const f=feed.find(x=>x.id===id);if(!f)return;Object.assign(f,patch);renderFeed()}
+
+let seq=0;
+async function sendCmdById(id,cmd,payload){
+  const d=devices.find(x=>x.id===id);if(!d)return;
+  const fid='k'+(++seq);
+  if(!ONLINE||d.sim){
+    addFeed({id:fid,name:CMD_LABEL[cmd]||cmd,dev:d.name,status:'run'});
+    setTimeout(()=>setFeed(fid,{status:'done',detail:SIM_DETAIL[cmd]||'（演示）完成'}),1400);
+    if(cmd==='burn'&&d.type==='ball'){d.status='idle';d.meta.storage=0.1;renderDevices();}
+    if(cmd==='start_recording'){d.status='recording';d.meta.session=1;renderDevices();}
+    if(cmd==='stop_recording'){d.status='idle';renderDevices();}
+    toast('演示模式 · 已模拟执行');
+    return;
+  }
+  if(!d.online){toast('设备离线，指令将在其上线后送达 ⏳');}
+  try{
+    const r=await api(`/api/devices/${id}/commands`,{method:'POST',body:JSON.stringify({cmd,payload})});
+    if(!feed.some(f=>f.id===r.cmdId)) addFeed({id:r.cmdId,name:CMD_LABEL[cmd]||cmd,dev:d.name,status:'sent'});
+    toast(`指令已下发 → ${d.name}`);
+  }catch(_){toast('后台不可达，请通过 node server.js 启动');}
+}
+const SIM_DETAIL={
+  start_recording:'开始录音（演示）· 加密写入本地',stop_recording:'已停止 · 本段 3.2 分钟 · 已加密保存',
+  sync:'今日音频 12.4G → 局域网内电脑「拾光归档」盘',burn:'🔥 已焚毁全部原始音频 · 仅保留云端摘要',
+  screenshot:'已截屏 842KB · 已回传手机相册',find_file:'找到《论文初稿_v3.docx》 · 11/14 修改',
+  open_downloads:'已打开「下载」文件夹',sysinfo:'CPU 23% · 内存 61% · 磁盘剩余 214G · 已运行 5.2h',
+  word:'已生成《复习提纲.md》→ 下载/拾光',print:'未检测到打印机 · 已生成 PDF 待打印'
+};
+
+/* 笔记页 → 电脑 */
+function sendTask(cmd){
+  const pc=findPC();
+  if(pc){sendCmdById(pc.id,cmd);return}
+  switchTab('devices');
+  toast('没有在线电脑 · 用模拟数据演示');
+  const fid='k'+(++seq);
+  addFeed({id:fid,name:CMD_LABEL[cmd]||cmd,dev:'模拟电脑',status:'run'});
+  setTimeout(()=>setFeed(fid,{status:'done',detail:SIM_DETAIL[cmd]||'（演示）完成'}),1400);
+}
+
+/* 焚毁 */
+function burnAll(){openModal('burnModal')}
+function doBurn(){
+  const ball=findBall();
+  if(ball&&!ball.sim) sendCmdById(ball.id,'burn');
+  else toast('🔥 已抹除心力球与电脑归档的原始音频（演示）');
+}
+
+/* ---------- 启动 ---------- */
+async function boot(){
+  if(!ONLINE){demoDevices();renderDevices();return}
+  try{
+    const r=await api('/api/devices');devices=r.devices||[];
+  }catch(_){demoDevices()}
+  renderDevices();
+  try{
+    const es=new EventSource('/events');
+    es.onmessage=e=>{
+      let m;try{m=JSON.parse(e.data)}catch(_){return}
+      if(m.type==='hello')devices=m.devices||[];
+      if(m.type==='device'){
+        const i=devices.findIndex(d=>d.id===m.device.id);
+        if(i>-1)devices[i]=m.device;else devices.push(m.device);
+      }
+      if(m.type==='command'&&!feed.some(f=>f.id===m.cmdId))
+        addFeed({id:m.cmdId,name:CMD_LABEL[m.cmd]||m.cmd,dev:m.deviceName,status:'sent'});
+      if(m.type==='command_result'){
+        const f=feed.find(x=>x.id===m.cmdId);
+        if(f)setFeed(m.cmdId,{status:'done',detail:`${f.dev}：${m.detail}`});
+        else addFeed({id:m.cmdId,name:CMD_LABEL[m.cmd]||m.cmd,dev:m.deviceName,status:'done',detail:m.detail});
+        toast('✅ '+(CMD_LABEL[m.cmd]||m.cmd)+' · '+(m.detail||'完成'));
+      }
+      renderDevices();
+    };
+  }catch(_){}
+}
+boot();
+</script>
+</body>
+</html>

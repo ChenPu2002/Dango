@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "团子",
+    "slug": "dango",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.dango.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "backgroundColor": "#F5F6F8",
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "团子需要使用麦克风录制课堂与生活语音"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "团子需要访问相册以提炼课堂照片",
+          "cameraPermission": "团子需要使用相机拍摄课堂材料"
+        }
+      ]
+    ]
+  }
+}
