@@ -157,7 +157,8 @@ export async function runAgent(question, { onStep, cancelled } = {}) {
         let args = {};
         try { args = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
         const result = executeTool(tc.function.name, args);
-        const step = { name: tc.function.name, brief: briefOf(tc.function.name, args, result) };
+        /* 步骤携带完整 args/result，前端按 ETA 样式渲染详细工具调用卡 */
+        const step = { name: tc.function.name, args, result, brief: briefOf(tc.function.name, args, result) };
         steps.push(step);
         onStep && onStep([...steps]);
         if (/^(add_|complete_|update_)/.test(tc.function.name)) actions.push({ name: tc.function.name, args, result });

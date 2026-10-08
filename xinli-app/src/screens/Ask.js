@@ -9,38 +9,55 @@ import { runAgent } from '../agent';
 
 const QUICK = ['我最近的作业有哪些？', '上周学了什么？', '帮我记一下周五要交大纲', '我现在心情怎么样？'];
 
-/* ===== 执行轨迹（ETA 式：默认折叠，可展开） ===== */
-function TraceBlock({ steps, running }) {
+/* ===== 工具调用卡（ETA 式：位于回答气泡上方，含参数/结果详情） ===== */
+const TOOL_META = {
+  search_memory: { icon: 'search' },
+  read_transcript: { icon: 'doc' },
+  list_records: { icon: 'clock' },
+  read_course_note: { icon: 'book' },
+  get_todos: { icon: 'check' },
+  get_dailies: { icon: 'calendar' },
+  get_moods: { icon: 'mood' },
+  add_todo: { icon: 'plus' },
+  complete_todo: { icon: 'check' },
+  update_profile: { icon: 'user' },
+  update_course_note: { icon: 'book' },
+};
+
+const fmtArgs = (args) => Object.entries(args || {})
+  .map(([k, v]) => `${k}: ${typeof v === 'string' ? `"${v}"` : JSON.stringify(v)}`)
+  .join(',  ');
+
+function ToolCallCard({ step, active }) {
   const [open, setOpen] = useState(false);
-  if (!steps || !steps.length) return null;
-  const cur = steps[steps.length - 1];
+  const meta = TOOL_META[step.name] || { icon: 'sparkle' };
+  const resultStr = (() => {
+    try { return JSON.stringify(step.result, null, 1).replace(/\n\s*/g, ' ').slice(0, 420); } catch (_) { return String(step.result); }
+  })();
   return (
-    <View style={{ marginTop: 8 }}>
-      <Pressable onPress={() => setOpen(!open)} style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: '#F5F2ED', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 4 }}>
-        {running
-          ? <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: T.orange, marginRight: 6 }} />
-          : <Ic name="search" size={10} color={T.sub} stroke={2.2} />}
-        <Text style={{ fontSize: 10.5, color: T.sub, fontWeight: '600' }} numberOfLines={1}>
-          {running ? (cur ? cur.brief : '思考中…') : `执行过程 · ${steps.length} 步`}
+    <View style={{ borderWidth: 0.5, borderColor: '#E8E2D8', backgroundColor: '#FFFEFB', borderRadius: 12, marginBottom: 6 }}>
+      <Pressable onPress={() => setOpen(!open)} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 9 }, pressed && { opacity: 0.7 }]}>
+        <Ic name={meta.icon} size={14} color={T.orangeDeep} />
+        <Text style={{ fontSize: 11.5, fontWeight: '700', color: T.text2, marginLeft: 7 }} numberOfLines={1}>
+          {step.name}
+          {step.args && Object.keys(step.args).length ? <Text style={{ fontWeight: '400', color: T.sub }}> · {fmtArgs(step.args).slice(0, 26)}</Text> : null}
         </Text>
-        <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }], marginLeft: 4 }}>
-          <Ic name="chevD" size={10} color={T.sub} stroke={2.2} />
+        <View style={{ flex: 1 }} />
+        {active ? <PulseDot /> : <Ic name="check" size={12} color={T.green} stroke={2.4} />}
+        <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }], marginLeft: 8 }}>
+          <Ic name="chevD" size={11} color="#C6BFB4" stroke={2.2} />
         </View>
       </Pressable>
       {open ? (
-        <View style={{ marginTop: 6, backgroundColor: '#F5F2ED', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 }}>
-          {steps.map((st, i) => (
-            <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-              <View style={{ width: 16, alignItems: 'center', marginRight: 6, marginTop: 3 }}>
-                {i === steps.length - 1 && running
-                  ? <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: T.orange }} />
-                  : <View style={{ width: 4.5, height: 4.5, borderRadius: 99, backgroundColor: '#C9C2B6' }} />}
-              </View>
-              <Text style={{ flex: 1, fontSize: 10.5, color: T.sub, lineHeight: 17 }}>
-                <Text style={{ color: '#B7B0A4' }}>{i + 1}. </Text>{st.brief}
-              </Text>
-            </View>
-          ))}
+        <View style={{ borderTopWidth: 0.5, borderTopColor: '#EFEAE1', paddingHorizontal: 10, paddingTop: 7, paddingBottom: 9 }}>
+          <Text style={{ fontSize: 10.5, color: T.sub, lineHeight: 16 }}>
+            <Text style={{ fontWeight: '800', color: '#B7B0A4' }}>参数 </Text>
+            {fmtArgs(step.args) || '（无）'}
+          </Text>
+          <Text style={{ fontSize: 10.5, color: T.sub, lineHeight: 16, marginTop: 4 }}>
+            <Text style={{ fontWeight: '800', color: '#B7B0A4' }}>结果 </Text>
+            {resultStr}
+          </Text>
         </View>
       ) : null}
     </View>
@@ -204,27 +221,31 @@ export default function Ask({ toast, prefill, clearPrefill }) {
           ) : null}
 
           {chats.map((c) => (
-            <View key={c.id} style={{ marginTop: 16 }}>
+            <View key={c.id} style={{ marginTop: 18 }}>
               <View style={{ alignSelf: 'flex-end', backgroundColor: T.orange, borderRadius: 18, borderBottomRightRadius: 5, paddingHorizontal: 14, paddingVertical: 10, maxWidth: '78%' }}>
                 <Text style={{ fontSize: 13.5, color: '#fff', lineHeight: 21 }}>{c.q}</Text>
               </View>
-              <View style={{ alignSelf: 'flex-start', backgroundColor: '#fff', borderWidth: 0.5, borderColor: T.line, borderRadius: 18, borderTopLeftRadius: 5, paddingHorizontal: 14, paddingVertical: 11, maxWidth: '88%', marginTop: 8, ...T.shadow }}>
-                {c.a ? (
-                  <>
-                    <MarkdownText text={c.a} style={{ fontSize: 13, color: T.text2 }} />
-                    <ActionChips actions={c.actions} />
-                    <TraceBlock steps={c.steps} running={false} />
-                  </>
-                ) : (
-                  <View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <PulseDot />
-                      <Text style={{ fontSize: 12, color: T.sub, marginLeft: 8 }}>团团思考中…</Text>
-                    </View>
-                    <TraceBlock steps={c.steps} running />
+              {/* 工具调用卡（ETA 式：答案上方，逐个展开详情） */}
+              {c.steps && c.steps.length ? (
+                <View style={{ marginTop: 10 }}>
+                  {c.steps.map((st, i) => (
+                    <ToolCallCard key={i} step={st} active={!c.a && i === c.steps.length - 1} />
+                  ))}
+                </View>
+              ) : null}
+              {c.a ? (
+                <View style={{ alignSelf: 'flex-start', backgroundColor: '#fff', borderWidth: 0.5, borderColor: T.line, borderRadius: 18, borderTopLeftRadius: 5, paddingHorizontal: 14, paddingVertical: 11, maxWidth: '88%', ...T.shadow }}>
+                  <MarkdownText text={c.a} style={{ fontSize: 13, color: T.text2 }} />
+                  <ActionChips actions={c.actions} />
+                </View>
+              ) : (
+                <View style={{ alignSelf: 'flex-start', backgroundColor: '#fff', borderWidth: 0.5, borderColor: T.line, borderRadius: 18, borderTopLeftRadius: 5, paddingHorizontal: 14, paddingVertical: 11, maxWidth: '88%', ...T.shadow }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <PulseDot />
+                    <Text style={{ fontSize: 12, color: T.sub, marginLeft: 8 }}>团团思考中…</Text>
                   </View>
-                )}
-              </View>
+                </View>
+              )}
             </View>
           ))}
         </ScrollView>
