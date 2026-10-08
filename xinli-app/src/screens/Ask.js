@@ -1,6 +1,6 @@
-/* 对话：多会话 + 侧边抽屉（Agent Runtime 前端） */
+/* 对话：多会话 + 左侧滑出抽屉（Agent Runtime 前端） */
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, TextInput, ScrollView, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import { View, Text, Pressable, TextInput, ScrollView, KeyboardAvoidingView, Platform, Modal, Animated, Dimensions } from 'react-native';
 import { Card, MarkdownText, PulseDot, ActionSheet } from '../ui';
 import { Ic } from '../icons';
 import { T } from '../theme';
@@ -9,18 +9,40 @@ import { runAgent } from '../agent';
 
 const QUICK = ['我最近的作业有哪些？', '上周学了什么？', '帮我记一下周五要交大纲', '我现在心情怎么样？'];
 
-function StepLine({ steps }) {
+/* ===== 执行轨迹（ETA 式：默认折叠，可展开） ===== */
+function TraceBlock({ steps, running }) {
+  const [open, setOpen] = useState(false);
   if (!steps || !steps.length) return null;
+  const cur = steps[steps.length - 1];
   return (
-    <View style={{ marginTop: 6, backgroundColor: '#F5F2ED', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
-      {steps.slice(-4).map((st, i) => (
-        <View key={i} style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ width: 14, alignItems: 'center', marginRight: 6 }}>
-            <View style={{ width: 4.5, height: 4.5, borderRadius: 99, backgroundColor: T.orange }} />
-          </View>
-          <Text style={{ flex: 1, fontSize: 10.5, color: T.sub, lineHeight: 16 }}>{st.brief}</Text>
+    <View style={{ marginTop: 8 }}>
+      <Pressable onPress={() => setOpen(!open)} style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: '#F5F2ED', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 4 }}>
+        {running
+          ? <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: T.orange, marginRight: 6 }} />
+          : <Ic name="search" size={10} color={T.sub} stroke={2.2} />}
+        <Text style={{ fontSize: 10.5, color: T.sub, fontWeight: '600' }} numberOfLines={1}>
+          {running ? (cur ? cur.brief : '思考中…') : `执行过程 · ${steps.length} 步`}
+        </Text>
+        <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }], marginLeft: 4 }}>
+          <Ic name="chevD" size={10} color={T.sub} stroke={2.2} />
         </View>
-      ))}
+      </Pressable>
+      {open ? (
+        <View style={{ marginTop: 6, backgroundColor: '#F5F2ED', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 }}>
+          {steps.map((st, i) => (
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+              <View style={{ width: 16, alignItems: 'center', marginRight: 6, marginTop: 3 }}>
+                {i === steps.length - 1 && running
+                  ? <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: T.orange }} />
+                  : <View style={{ width: 4.5, height: 4.5, borderRadius: 99, backgroundColor: '#C9C2B6' }} />}
+              </View>
+              <Text style={{ flex: 1, fontSize: 10.5, color: T.sub, lineHeight: 17 }}>
+                <Text style={{ color: '#B7B0A4' }}>{i + 1}. </Text>{st.brief}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -41,39 +63,48 @@ function ActionChips({ actions }) {
   );
 }
 
-/* ===== 会话抽屉 ===== */
+/* ===== 会话抽屉：从左侧滑入 ===== */
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 function SessionDrawer({ visible, onClose, sessions, currentId, onNew, onSwitch, onDelete }) {
+  const W = Math.round(Dimensions.get('window').width * 0.8);
+  const slide = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(slide, { toValue: visible ? 1 : 0, duration: 240, useNativeDriver: true }).start();
+  }, [visible]);
+  const translateX = slide.interpolate({ inputRange: [0, 1], outputRange: [-W - 20, 0] });
+  const dim = slide.interpolate({ inputRange: [0, 1], outputRange: [0, 0.4] });
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,.35)' }} onPress={onClose}>
-        <Pressable style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '80%', backgroundColor: '#FFFDF9', borderTopRightRadius: 22, borderBottomRightRadius: 22, paddingTop: 64, paddingHorizontal: 14 }} onPress={() => {}}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-            <Text style={{ fontSize: 17, fontWeight: '800', color: T.text, flex: 1 }}>对话记录</Text>
-            <Pressable onPress={onNew} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', backgroundColor: T.orangeSoft, borderRadius: 99, paddingHorizontal: 11, paddingVertical: 6 }, pressed && { opacity: 0.6 }]}>
-              <Ic name="plus" size={13} color={T.orangeDeep} stroke={2.4} />
-              <Text style={{ fontSize: 11.5, fontWeight: '700', color: T.orangeDeep, marginLeft: 4 }}>新对话</Text>
-            </Pressable>
-          </View>
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }}>
-            {sessions.map((se) => {
-              const on = se.id === currentId;
-              return (
-                <Pressable key={se.id} onPress={() => { onSwitch(se.id); onClose(); }} onLongPress={() => onDelete(se)} delayLongPress={350}
-                  style={({ pressed }) => [{ backgroundColor: on ? T.orangeSoft : '#FFFFFF', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 11, marginTop: 8, borderWidth: 0.5, borderColor: on ? '#F0D9C8' : T.line }, pressed && { opacity: 0.7 }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '700', color: on ? T.orangeDeep : T.text }} numberOfLines={1}>{se.title || '新对话'}</Text>
-                    {on ? <Ic name="chat" size={13} color={T.orangeDeep} /> : null}
-                  </View>
-                  <Text style={{ fontSize: 10.5, color: T.sub, marginTop: 2 }}>{(se.messages || []).length} 条 · {fmtDate(se.updatedAt || se.createdAt || Date.now())}</Text>
-                </Pressable>
-              );
-            })}
-            {!sessions.length ? <Text style={{ fontSize: 12, color: T.sub, textAlign: 'center', marginTop: 30 }}>还没有对话</Text> : null}
-          </ScrollView>
-          <Text style={{ fontSize: 10, color: T.sub, paddingVertical: 10, textAlign: 'center' }}>长按对话可删除</Text>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <View pointerEvents={visible ? 'auto' : 'none'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+      <AnimatedPressable onPress={onClose} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', opacity: dim }} />
+      <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: W, backgroundColor: '#FFFDF9', borderRightWidth: 0.5, borderRightColor: T.line, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 6, height: 0 }, elevation: 12, transform: [{ translateX }], paddingTop: 66, paddingHorizontal: 14 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+          <Text style={{ fontSize: 17, fontWeight: '800', color: T.text, flex: 1 }}>对话记录</Text>
+          <Pressable onPress={onNew} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', backgroundColor: T.orangeSoft, borderRadius: 99, paddingHorizontal: 11, paddingVertical: 6 }, pressed && { opacity: 0.6 }]}>
+            <Ic name="plus" size={13} color={T.orangeDeep} stroke={2.4} />
+            <Text style={{ fontSize: 11.5, fontWeight: '700', color: T.orangeDeep, marginLeft: 4 }}>新对话</Text>
+          </Pressable>
+        </View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }}>
+          {sessions.map((se) => {
+            const on = se.id === currentId;
+            return (
+              <Pressable key={se.id} onPress={() => { onSwitch(se.id); onClose(); }} onLongPress={() => onDelete(se)} delayLongPress={350}
+                android_ripple={{ color: 'rgba(60,40,20,0.05)', foreground: true }}
+                style={{ backgroundColor: on ? T.orangeSoft : '#FFFFFF', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 11, marginTop: 8, borderWidth: 0.5, borderColor: on ? '#F0D9C8' : T.line }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '700', color: on ? T.orangeDeep : T.text }} numberOfLines={1}>{se.title || '新对话'}</Text>
+                  {on ? <Ic name="chat" size={13} color={T.orangeDeep} /> : null}
+                </View>
+                <Text style={{ fontSize: 10.5, color: T.sub, marginTop: 2 }}>{(se.messages || []).length} 条 · {fmtDate(se.updatedAt || se.createdAt || Date.now())}</Text>
+              </Pressable>
+            );
+          })}
+          {!sessions.length ? <Text style={{ fontSize: 12, color: T.sub, textAlign: 'center', marginTop: 30 }}>还没有对话</Text> : null}
+        </ScrollView>
+        <Text style={{ fontSize: 10, color: T.sub, paddingVertical: 10, textAlign: 'center' }}>长按对话可删除</Text>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -182,7 +213,7 @@ export default function Ask({ toast, prefill, clearPrefill }) {
                   <>
                     <MarkdownText text={c.a} style={{ fontSize: 13, color: T.text2 }} />
                     <ActionChips actions={c.actions} />
-                    {c.steps && c.steps.length ? <StepLine steps={c.steps} /> : null}
+                    <TraceBlock steps={c.steps} running={false} />
                   </>
                 ) : (
                   <View>
@@ -190,7 +221,7 @@ export default function Ask({ toast, prefill, clearPrefill }) {
                       <PulseDot />
                       <Text style={{ fontSize: 12, color: T.sub, marginLeft: 8 }}>团团思考中…</Text>
                     </View>
-                    <StepLine steps={c.steps} />
+                    <TraceBlock steps={c.steps} running />
                   </View>
                 )}
               </View>

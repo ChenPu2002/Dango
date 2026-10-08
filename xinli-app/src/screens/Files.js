@@ -56,7 +56,9 @@ export default function Files({ visible, onClose, toast }) {
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
           {files.length ? files.map((f) => (
-            <Pressable key={f.name} onPress={() => setPreview(f)} style={({ pressed }) => [pressed && { opacity: 0.6 }]}>
+            <Pressable key={f.name} onPress={() => setPreview(f)}
+              android_ripple={{ color: 'rgba(60,40,20,0.05)', foreground: true }}
+              style={{ borderRadius: 18 }}>
               <Card style={{ paddingVertical: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: T.orangeSoft, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
