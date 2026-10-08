@@ -6,7 +6,7 @@ import { Card, Btn, MarkdownText } from '../ui';
 import { Ic } from '../icons';
 import { T } from '../theme';
 import { useStore } from '../store';
-import { exportAll } from '../exporter';
+import { exportAll, linkSystemFolder } from '../exporter';
 
 const fmtAt = (ts) => {
   const d = new Date(ts);
@@ -25,11 +25,16 @@ export default function Files({ visible, onClose, toast }) {
     setBacking(true);
     try {
       const n = await exportAll();
-      toast(`已备份 ${n} 个文档`);
+      toast(`已更新 ${n} 个文档`);
     } catch (e) {
       toast('备份失败: ' + String((e && e.message) || e).slice(0, 40));
     }
     setBacking(false);
+  };
+
+  const link = async () => {
+    const ok = await linkSystemFolder();
+    toast(ok ? '已关联系统文件夹 · 后续自动镜像' : '未完成关联（不影响 App 内文档）');
   };
 
   const iconOf = (name) => (/_转写\.txt$/.test(name) ? 'mic' : /手帐\.md$/.test(name) ? 'book' : 'doc');
@@ -77,8 +82,15 @@ export default function Files({ visible, onClose, toast }) {
           )}
         </ScrollView>
 
-        <View style={{ paddingVertical: 14, borderTopWidth: 0.5, borderTopColor: T.line }}>
-          <Text style={{ fontSize: 10.5, color: T.sub, textAlign: 'center' }}>备份位置：手机存储 / 文档 / 团子 · 由团子自动维护</Text>
+        <View style={{ paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: T.line, alignItems: 'center' }}>
+          <Text style={{ fontSize: 10.5, color: T.sub, textAlign: 'center' }}>
+            {s.settings.exportRoot ? '已关联系统文件夹：手机存储 / 文档 / 团子 · 自动镜像' : '文档保存在 App 内 · 可选关联系统文件夹用于外部查看'}
+          </Text>
+          {!s.settings.exportRoot ? (
+            <Pressable onPress={link} style={{ marginTop: 6, padding: 4 }}>
+              <Text style={{ fontSize: 11, color: T.orangeDeep, fontWeight: '700' }}>关联系统文件夹（可选）</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {/* 文档预览（App 内阅读，不跳文件夹） */}

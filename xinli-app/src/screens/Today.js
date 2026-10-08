@@ -115,19 +115,14 @@ function TodayTodos({ toast }) {
         </Pressable>
       </View>
       <View style={{ marginTop: 4 }}>
-        {todos.slice(0, 4).map((t) => (
+        {todos.map((t) => (
           <Pressable key={t.id} onPress={() => toggleTodo(t.id)} onLongPress={() => setMenu({ todo: t })} delayLongPress={350}
             style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9 }}>
             <View style={{ width: 20, height: 20, borderRadius: 7, borderWidth: 1.6, borderColor: T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }} />
-            <Text style={{ flex: 1, fontSize: 13.5, color: T.text }} numberOfLines={1}>{t.text}</Text>
+            <Text style={{ flex: 1, fontSize: 13.5, color: T.text }} numberOfLines={2}>{t.text}</Text>
             {t.due ? <Text style={{ fontSize: 10, color: T.red, marginLeft: 6 }}>{t.due}</Text> : null}
           </Pressable>
         ))}
-        {todos.length > 4 ? (
-          <Pressable onPress={toggleTodo} style={{ paddingVertical: 6 }}>
-            <Text style={{ fontSize: 11, color: T.sub }}>还有 {todos.length - 4} 件 · 完成上面的会依次出现</Text>
-          </Pressable>
-        ) : null}
         {doneToday.slice(0, 3).map((t) => (
           <Pressable key={t.id} onPress={() => toggleTodo(t.id)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, opacity: 0.55 }}>
             <View style={{ width: 20, height: 20, borderRadius: 7, backgroundColor: T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>

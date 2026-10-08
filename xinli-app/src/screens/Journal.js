@@ -78,8 +78,8 @@ export default function Journal({ toast, goAsk }) {
   };
 
   return (
-    <View style={{ flex: 1 }}>
-      <View style={{ paddingHorizontal: 2, marginTop: 10 }}>
+    <View style={{ flex: 1, paddingHorizontal: 12 }}>
+      <View style={{ marginTop: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={{ fontSize: 20, fontWeight: '800', color: T.text, flex: 1 }}>手帐</Text>
           <Pressable onPress={syncAll} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', backgroundColor: T.orangeSoft, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 7 }, pressed && { opacity: 0.6 }]}>
@@ -90,22 +90,20 @@ export default function Journal({ toast, goAsk }) {
         <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>全部记忆都在这里 · 搜索 / 阅读 / 编辑</Text>
       </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, marginHorizontal: 2 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12, ...T.shadow }}>
-          <Ic name="search" size={15} color="#B3ACA1" />
-          <TextInput value={q} onChangeText={setQ} placeholder="搜索全部记忆…" placeholderTextColor={T.sub}
-            style={{ flex: 1, fontSize: 13, color: T.text, paddingVertical: 10, paddingHorizontal: 8 }} />
-        </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12, ...T.shadow }}>
+        <Ic name="search" size={15} color="#B3ACA1" />
+        <TextInput value={q} onChangeText={setQ} placeholder="搜索全部记忆…" placeholderTextColor={T.sub}
+          style={{ flex: 1, fontSize: 13, color: T.text, paddingVertical: 10, paddingHorizontal: 8 }} />
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8, marginHorizontal: 2 }} contentContainerStyle={{ paddingHorizontal: 2 }}>
-        {CHIPS.map((c) => (
-          <Pressable key={c} onPress={() => setChip(c)} style={{ borderRadius: 99, paddingHorizontal: 14, paddingVertical: 7, marginRight: 8, backgroundColor: chip === c ? T.orange : '#fff' }}>
+      <View style={{ flexDirection: 'row', marginTop: 10 }}>
+        {CHIPS.map((c, i) => (
+          <Pressable key={c} onPress={() => setChip(c)} style={{ borderRadius: 99, paddingHorizontal: 13, paddingVertical: 6, marginLeft: i ? 7 : 0, backgroundColor: chip === c ? T.orange : '#F3F0EA' }}>
             <Text style={{ fontSize: 12, fontWeight: '600', color: chip === c ? '#fff' : T.sub }}>{c}</Text>
           </Pressable>
         ))}
-      </ScrollView>
+      </View>
 
-      <ScrollView style={{ flex: 1, marginTop: 4 }} contentContainerStyle={{ paddingHorizontal: 2, paddingBottom: 170 }}>
+      <ScrollView style={{ flex: 1, marginTop: 2 }} contentContainerStyle={{ paddingBottom: 170 }}>
         {filtered.length ? filtered.map((d) => {
           const st = DOC_STYLE[d.type === 'archive' ? `archive_${d.iconKind}` : d.type] || DOC_STYLE.archive_doc;
           return (

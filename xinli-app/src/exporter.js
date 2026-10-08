@@ -129,18 +129,40 @@ export async function exportJob(j) {
   }
 }
 
-/* 全量导出：记忆文件 + 近30条记录（用户手势触发，可弹授权） */
+/* 备份 = 刷新 App 内文档索引（云文档页数据源，纯 store）+（已关联系统文件夹时）静默镜像写盘。
+ * 永远不弹系统授权窗；文件夹关联只能通过 云文档 页脚的显式入口 */
 export async function exportAll() {
-  const dir = await ensureExportDir({ ask: true });
-  if (!dir) throw new Error('未授权文档目录');
-  let n = 0;
-  await writeSafe(dir, MEMORY_FILE, buildMemoryMd(getState())); n++;
   const st = getState();
-  for (const j of st.jobs.filter((x) => x.status === 'done').slice(0, 30)) {
-    for (const f of jobFiles(j)) { try { await writeSafe(dir, f.name, f.content); n++; } catch (_) {} }
+  const entries = [{ name: MEMORY_FILE, content: buildMemoryMd(st) }];
+  st.jobs.filter((j) => j.status === 'done').forEach((j) => {
+    jobFiles(j).forEach((f) => entries.push({ name: f.name, content: f.content }));
+  });
+  const at = Date.now();
+  setState((s2) => ({ ...s2, exportedFiles: entries.slice(0, 120).map((e) => ({ name: e.name, at, content: String(e.content).slice(0, 4000) })) }));
+
+  const root = (() => {
+    let r = st.settings.exportRoot;
+    if (!r && st.settings.exportDir && st.settings.exportDir.includes('/tree/')) r = st.settings.exportDir.split('/document/')[0];
+    return r;
+  })();
+  if (root) {
+    try {
+      const dir = deriveDirUri(root);
+      await SAF.makeDirectoryAsync(`${root}/document/${encodeURIComponent('primary:Documents')}`, FOLDER).catch(() => {});
+      for (const e of entries.slice(0, 31)) {
+        try { await writeSafe(dir, e.name, e.content); } catch (_) {}
+      }
+      console.log('[dango] 📤 镜像同步完成', Math.min(entries.length, 31), '个');
+    } catch (e) { console.log('[dango] 镜像同步失败', String((e && e.message) || e).slice(0, 60)); }
   }
-  console.log('[dango] 📤 导出完成', n, '个文件');
-  return n;
+  console.log('[dango] 📤 文档索引已刷新', entries.length, '个');
+  return entries.length;
+}
+
+/* 显式关联系统文件夹（云文档页脚唯一入口，用户主动点击才可能弹系统选择器） */
+export async function linkSystemFolder() {
+  const dir = await ensureExportDir({ ask: true });
+  return !!dir;
 }
 
 /* 兼容旧入口名 */
