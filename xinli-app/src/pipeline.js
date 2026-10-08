@@ -1,8 +1,8 @@
 /* 处理管线 v2（参考 Eta Agent Loop）
  * 串行队列：queued→asr→llm(提取)→merge(合并记忆)→done，失败可重试，合并失败降级为直接追加 */
 import * as FS from 'expo-file-system/legacy';
-import { getState, setState, uid } from './store';
-import { llmChat, asrRecognize, EXTRACT_SYS, MERGE_SYS, DAILY_SYS, parseExtractJson } from './api';
+import { getState, setState, uid, parseDue, todayKeyISO } from './store';
+import { llmChat, asrRecognize, EXTRACT_SYS, MERGE_SYS, DAILY_SYS, REBUILD_SYS, parseExtractJson } from './api';
 import { writeMemoryFile, clearMemoryFile } from './exporter';
 
 function patchJob(id, patch) {
@@ -52,7 +52,8 @@ async function mergeExtract(ex) {
   const cardList = activeCards.slice(0, 150).map((c) => `${c.id}|${c.q}|${String(c.a).slice(0, 40)}`).join('\n');
   const todoList = st.todos.slice(0, 80).map((t) => `${t.id}|${t.text}|${t.due || ''}|${t.done ? 'done' : 'todo'}`).join('\n');
   const profile = st.profile && st.profile.text ? st.profile.text.slice(0, 1000) : '（暂无）';
-  const user = `新材料提取结果：\n${JSON.stringify({ title: ex.title, summary: ex.summary, outline: ex.outline, keywords: ex.keywords, points: ex.points, cards: ex.cards, todos: ex.todos })}\n\n现有活跃卡片（id|问题|答案摘要）：\n${cardList || '（无）'}\n\n现有待办（id|内容|截止|状态）：\n${todoList || '（无）'}\n\n用户画像摘要：\n${profile}`;
+  const notes = Object.entries(st.courseNotes || {}).map(([k, v]) => `【${k}】${String(v.content || '').slice(0, 200)}`).join('\n') || '（无）';
+  const user = `新材料提取结果：\n${JSON.stringify({ title: ex.title, summary: ex.summary, outline: ex.outline, keywords: ex.keywords, points: ex.points, cards: ex.cards, todos: ex.todos })}\n\n现有活跃卡片（id|问题|答案摘要）：\n${cardList || '（无）'}\n\n现有待办（id|内容|截止|状态）：\n${todoList || '（无）'}\n\n现有课程笔记（note 更新时必须吸收并保持连续）：\n${notes}\n\n用户画像摘要：\n${profile}`;
   const out = await llmChat([{ role: 'system', content: MERGE_SYS }, { role: 'user', content: user }]);
   const ops = parseExtractJson(out);
   ['cards', 'todos'].forEach((k) => {
@@ -100,7 +101,8 @@ function applyOps(jobId, ex, ops) {
 
     (ops.todos.add || []).filter((t) => t && t.text).forEach((t) => {
       const id = uid(); derived.todoIds.push(id);
-      todos.unshift({ id, text: t.text, due: t.due || '', from, done: false, createdAt: now });
+      const { due, dueAt } = parseDue(t.due || '');
+      todos.unshift({ id, text: t.text, due, dueAt, from, done: false, createdAt: now, visibleFrom: '' });
     });
     (ops.todos.done || []).forEach((id) => {
       const i = todos.findIndex((t) => t.id === id);
@@ -155,7 +157,7 @@ function applyExtractFallback(jobId, ex) {
 }
 
 /* ---------- 日终归档 Agent：今日工作台清空，过去沉入记忆 ---------- */
-export const archToday = () => `${new Date().getFullYear()}-${new Date().getMonth() + 1}-${new Date().getDate()}`;
+export const archToday = todayKeyISO;
 
 export async function runArchivist() {
   const today = archToday();
@@ -379,21 +381,51 @@ export function deleteTodo(id) { setState((s) => ({ ...s, todos: s.todos.filter(
 export function editTodo(id, text) { setState((s) => ({ ...s, todos: s.todos.map((t) => (t.id === id ? { ...t, text } : t)) })); }
 export function toggleTodo(id) { setState((s) => ({ ...s, todos: s.todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t)) })); }
 
-/* 删除一条记录（可选连带其生成内容） */
+/* 删除一条记录（可选连带其生成内容）。
+ * 隐私要求：withDerived 时必须清除一切衍生物 —— 卡片/待办/心情/云文档/日结/课程笔记与画像（LLM 从剩余记录重建） */
 export async function deleteJob(jobId, withDerived) {
   const job = getState().jobs.find((j) => j.id === jobId);
   if (!job) return;
   if (job.uri && job.uri.startsWith('file:')) await FS.deleteAsync(job.uri, { idempotent: true }).catch(() => {});
   setState((s) => {
     const derived = job.derived || { cardIds: [], todoIds: [] };
+    const dkey = `${new Date(job.createdAt).getMonth() + 1}.${new Date(job.createdAt).getDate()}`;
     return {
       ...s,
       jobs: s.jobs.filter((j) => j.id !== jobId),
       moods: s.moods.filter((m) => m.jobId !== jobId),
       cards: withDerived ? s.cards.filter((c) => !derived.cardIds.includes(c.id)) : s.cards,
       todos: withDerived ? s.todos.filter((t) => !derived.todoIds.includes(t.id)) : s.todos,
+      dailies: withDerived ? s.dailies.filter((d) => d.date !== dkey) : s.dailies,
     };
   });
+  if (withDerived) {
+    import('./exporter').then(async (m) => {
+      try { await m.removeJobFiles(job); await m.exportAll(); } catch (_) {}
+    }).catch(() => {});
+    rebuildMergedMemory().catch((e) => console.log('[dango] 记忆重建失败', String((e && e.message) || e).slice(0, 60)));
+  }
+}
+
+/* 记忆重建：删除记录后，仅从剩余记录重新生成课程笔记与画像（保证衍生内容不含已删材料） */
+export async function rebuildMergedMemory() {
+  const st = getState();
+  const done = st.jobs.filter((j) => j.status === 'done').slice(0, 40);
+  if (!done.length) {
+    setState((s) => ({ ...s, courseNotes: {}, profile: { text: '', updatedAt: Date.now() } }));
+    return;
+  }
+  const input = done.map((j) => `【${(j.extract && j.extract.title) || j.title}】${((j.extract && j.extract.summary) || '').slice(0, 90)} ${(j.asrText || '').slice(0, 150)}`).join('\n');
+  const out = await llmChat([{ role: 'system', content: REBUILD_SYS }, { role: 'user', content: input }], 1800);
+  const d = parseExtractJson(out);
+  const notes = {};
+  Object.entries(d.courseNotes || {}).forEach(([k, v]) => {
+    notes[k] = { content: String(typeof v === 'string' ? v : (v && v.content) || '').slice(0, 400), updatedAt: Date.now() };
+  });
+  const ptext = String((d.profile && (d.profile.full || d.profile.text)) || (typeof d.profile === 'string' ? d.profile : '') || '').slice(0, 400);
+  setState((s) => ({ ...s, courseNotes: notes, profile: { text: ptext, updatedAt: Date.now() } }));
+  try { await writeMemoryFile(); } catch (_) {}
+  console.log('[dango] ♻️ 记忆重建完成：', Object.keys(notes).join('、') || '（无笔记）');
 }
 
 export { clearMemoryFile };

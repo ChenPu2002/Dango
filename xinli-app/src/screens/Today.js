@@ -5,7 +5,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Card, Section, Chip, ActionSheet, InputSheet, PulseDot, MarkdownText } from '../ui';
 import { Ic } from '../icons';
 import { T } from '../theme';
-import { useStore, setState, getState, uid, fmtTime, fmtDate } from '../store';
+import { useStore, setState, getState, uid, fmtTime, fmtDate, dueLabel, dayStart, todayKeyISO } from '../store';
 import { deleteJob, editTodo, deleteTodo, toggleTodo, retryJob } from '../pipeline';
 
 const KIND = { audio: { icon: 'mic' }, photo: { icon: 'camera' }, doc: { icon: 'doc' } };
@@ -91,47 +91,71 @@ function TodayTodos({ toast }) {
   const [text, setText] = useState('');
   const [menu, setMenu] = useState(null);
   const [edit, setEdit] = useState(null);
-  const todayKey = new Date().toDateString();
-  const todos = s.todos.filter((t) => !t.archived && !t.done && (!t.visibleFrom || new Date(t.visibleFrom) <= new Date()));
-  const doneToday = s.todos.filter((t) => t.done && new Date(t.createdAt).toDateString() === todayKey);
+  const todayStart = dayStart(new Date()).getTime();
+  const tk = todayKeyISO();
+  const visible = (t) => !t.archived && (!t.visibleFrom || t.visibleFrom <= tk);
+  const pending = s.todos.filter((t) => !t.done && visible(t));
+  const doneToday = s.todos.filter((t) => t.done && visible(t));
+  const carried = (t) => t.visibleFrom && t.visibleFrom < tk;
   const add = () => {
     if (!text.trim()) return;
-    setState((st) => ({ ...st, todos: [{ id: uid(), text: text.trim(), due: '', from: '手动', done: false, archived: false, createdAt: Date.now(), visibleFrom: `${new Date().getFullYear()}-${new Date().getMonth() + 1}-${new Date().getDate()}` }, ...st.todos] }));
+    setState((st) => ({ ...st, todos: [{ id: uid(), text: text.trim(), due: '', from: '手动', done: false, archived: false, createdAt: Date.now(), visibleFrom: todayKeyISO() }, ...st.todos] }));
     setText('');
-    toast('已添加');
+  };
+  const DueBadge = ({ t }) => {
+    const l = dueLabel(t.dueAt);
+    if (!l) return t.due ? <Text style={{ fontSize: 10, color: T.sub, marginLeft: 6 }}>{t.due}</Text> : null;
+    const hot = l.tone === 'over' || l.tone === 'due';
+    const c = hot ? T.red : l.tone === 'soon' ? T.orangeDeep : T.sub;
+    return (
+      <View style={{ backgroundColor: hot ? T.redSoft : 'transparent', borderRadius: 6, paddingHorizontal: hot ? 5 : 0, paddingVertical: 2, marginLeft: 8 }}>
+        <Text style={{ fontSize: 10, fontWeight: '700', color: c }}>{l.text}</Text>
+      </View>
+    );
   };
   return (
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Text style={{ fontSize: 15, fontWeight: '800', color: T.text, flex: 1 }}>今日待办</Text>
-        <Text style={{ fontSize: 11, color: T.sub }}>{todos.length} 件待做{doneToday.length ? ` · ${doneToday.length} 件已完成` : ''}</Text>
+        <Text style={{ fontSize: 11, color: T.sub }}>{pending.length} 件待做{doneToday.length ? ` · 已完成 ${doneToday.length}` : ''}</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
         <TextInput value={text} onChangeText={setText} placeholder="记一件今天要做的…" placeholderTextColor={T.sub}
           onSubmitEditing={add} returnKeyType="done"
-          style={{ flex: 1, fontSize: 13, color: T.text, backgroundColor: '#F7F8FA', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 }} />
-        <Pressable onPress={add} style={{ marginLeft: 8, backgroundColor: T.orange, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 }}>
+          style={{ flex: 1, fontSize: 13, color: T.text, backgroundColor: '#F7F4EF', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 }} />
+        <Pressable onPress={add} style={({ pressed }) => [{ marginLeft: 8, backgroundColor: T.orange, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 }, pressed && { opacity: 0.7 }]}>
           <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>添加</Text>
         </Pressable>
       </View>
       <View style={{ marginTop: 4 }}>
-        {todos.map((t) => (
+        {pending.map((t) => (
           <Pressable key={t.id} onPress={() => toggleTodo(t.id)} onLongPress={() => setMenu({ todo: t })} delayLongPress={350}
-            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9 }}>
+            android_ripple={{ color: 'rgba(60,40,20,0.05)', foreground: true }}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9, borderRadius: 8 }}>
             <View style={{ width: 20, height: 20, borderRadius: 7, borderWidth: 1.6, borderColor: T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }} />
             <Text style={{ flex: 1, fontSize: 13.5, color: T.text }} numberOfLines={2}>{t.text}</Text>
-            {t.due ? <Text style={{ fontSize: 10, color: T.red, marginLeft: 6 }}>{t.due}</Text> : null}
+            {carried(t) ? <Text style={{ fontSize: 9.5, color: '#A8A094', marginLeft: 6 }}>遗留</Text> : null}
+            <DueBadge t={t} />
           </Pressable>
         ))}
-        {doneToday.slice(0, 3).map((t) => (
-          <Pressable key={t.id} onPress={() => toggleTodo(t.id)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, opacity: 0.55 }}>
-            <View style={{ width: 20, height: 20, borderRadius: 7, backgroundColor: T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-              <Ic name="check" size={11} color="#fff" stroke={2.8} />
-            </View>
-            <Text style={{ flex: 1, fontSize: 13, color: T.sub, textDecorationLine: 'line-through' }}>{t.text}</Text>
-          </Pressable>
-        ))}
-        {!todos.length && !doneToday.length ? <Text style={{ fontSize: 11.5, color: T.sub, paddingVertical: 8 }}>录一段音，里面提到的任务会自动出现</Text> : null}
+        {doneToday.length ? (
+          <View style={{ marginTop: 2, paddingTop: 6, borderTopWidth: 0.5, borderTopColor: T.line }}>
+            {doneToday.map((t) => (
+              <Pressable key={t.id} onPress={() => toggleTodo(t.id)} onLongPress={() => setMenu({ todo: t })} delayLongPress={350}
+                android_ripple={{ color: 'rgba(60,40,20,0.05)', foreground: true }}
+                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderRadius: 8 }}>
+                <View style={{ width: 20, height: 20, borderRadius: 7, backgroundColor: T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                  <Ic name="check" size={11} color="#fff" stroke={2.8} />
+                </View>
+                <Text style={{ flex: 1, fontSize: 13, color: T.sub, textDecorationLine: 'line-through' }}>{t.text}</Text>
+              </Pressable>
+            ))}
+            <Pressable onPress={() => { doneToday.forEach((t) => deleteTodo(t.id)); toast('已清除完成项'); }} style={{ alignSelf: 'flex-end', paddingVertical: 5, paddingHorizontal: 4 }}>
+              <Text style={{ fontSize: 10.5, color: T.sub }}>清除已完成</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {!pending.length && !doneToday.length ? <Text style={{ fontSize: 11.5, color: T.sub, paddingVertical: 8 }}>录一段音，里面提到的任务会自动出现</Text> : null}
       </View>
       <ActionSheet visible={!!menu} onClose={() => setMenu(null)} title={menu ? menu.todo.text : ''}
         options={menu ? [
@@ -230,9 +254,31 @@ export default function Today({ toast, goAsk, goJournal }) {
       <View style={{ paddingHorizontal: 2, marginTop: 10 }}>
         <Text style={{ fontSize: 20, fontWeight: '800', color: T.text }}>{fmtDate(Date.now())} · 今天</Text>
         <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 2 }}>
-          {doneJobs.length}/{todayJobs.length} 条记录 · 待办 {s.todos.filter((t) => !t.done && !t.archived && (!t.visibleFrom || new Date(t.visibleFrom) <= new Date())).length} 件 · 卡片 {s.cards.filter((c) => c.status === 'active' && new Date(c.createdAt).toDateString() === new Date().toDateString()).length} 张
+          {doneJobs.length}/{todayJobs.length} 条记录 · 待办 {s.todos.filter((t) => !t.done && !t.archived && (!t.visibleFrom || t.visibleFrom <= todayKeyISO())).length} 件 · 卡片 {s.cards.filter((c) => c.status === 'active' && new Date(c.createdAt).toDateString() === new Date().toDateString()).length} 张
         </Text>
       </View>
+
+      {/* 到期提醒：逾期/今天到期的待办 */}
+      {(() => {
+        const t0 = dayStart(new Date()).getTime();
+        const dueList = s.todos.filter((t) => !t.done && !t.archived && t.dueAt && t.dueAt <= t0 && (!t.visibleFrom || t.visibleFrom <= todayKeyISO()));
+        if (!dueList.length) return null;
+        const over = dueList.filter((t) => t.dueAt < t0);
+        const due = dueList.filter((t) => t.dueAt === t0);
+        return (
+          <Card style={{ backgroundColor: '#FBEEE8', borderWidth: 0, paddingVertical: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ic name="clock" size={15} color={T.red} />
+              <Text style={{ fontSize: 12, fontWeight: '800', color: T.red, marginLeft: 7 }}>
+                {over.length ? `逾期 ${over.length} 件` : ''}{over.length && due.length ? ' · ' : ''}{due.length ? `今天到期 ${due.length} 件` : ''}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 11.5, color: '#8A5A45', marginTop: 4, lineHeight: 17 }} numberOfLines={2}>
+              {dueList.slice(0, 3).map((t) => t.text).join('、')}{dueList.length > 3 ? ' 等' : ''}
+            </Text>
+          </Card>
+        );
+      })()}
 
       {/* 心情四态 */}
       {latestMood ? (() => {

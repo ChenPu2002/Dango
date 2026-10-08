@@ -1,10 +1,10 @@
-/* 对话：Agent Runtime 前端（工具循环 + 执行轨迹 + 行动结果 + 取消） */
+/* 对话：多会话 + 侧边抽屉（Agent Runtime 前端） */
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, TextInput, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
-import { Card, MarkdownText, PulseDot } from '../ui';
+import { View, Text, Pressable, TextInput, ScrollView, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import { Card, MarkdownText, PulseDot, ActionSheet } from '../ui';
 import { Ic } from '../icons';
 import { T } from '../theme';
-import { useStore, setState, uid } from '../store';
+import { useStore, setState, uid, fmtDate } from '../store';
 import { runAgent } from '../agent';
 
 const QUICK = ['我最近的作业有哪些？', '上周学了什么？', '帮我记一下周五要交大纲', '我现在心情怎么样？'];
@@ -41,49 +41,117 @@ function ActionChips({ actions }) {
   );
 }
 
+/* ===== 会话抽屉 ===== */
+function SessionDrawer({ visible, onClose, sessions, currentId, onNew, onSwitch, onDelete }) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,.35)' }} onPress={onClose}>
+        <Pressable style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '80%', backgroundColor: '#FFFDF9', borderTopRightRadius: 22, borderBottomRightRadius: 22, paddingTop: 64, paddingHorizontal: 14 }} onPress={() => {}}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+            <Text style={{ fontSize: 17, fontWeight: '800', color: T.text, flex: 1 }}>对话记录</Text>
+            <Pressable onPress={onNew} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', backgroundColor: T.orangeSoft, borderRadius: 99, paddingHorizontal: 11, paddingVertical: 6 }, pressed && { opacity: 0.6 }]}>
+              <Ic name="plus" size={13} color={T.orangeDeep} stroke={2.4} />
+              <Text style={{ fontSize: 11.5, fontWeight: '700', color: T.orangeDeep, marginLeft: 4 }}>新对话</Text>
+            </Pressable>
+          </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }}>
+            {sessions.map((se) => {
+              const on = se.id === currentId;
+              return (
+                <Pressable key={se.id} onPress={() => { onSwitch(se.id); onClose(); }} onLongPress={() => onDelete(se)} delayLongPress={350}
+                  style={({ pressed }) => [{ backgroundColor: on ? T.orangeSoft : '#FFFFFF', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 11, marginTop: 8, borderWidth: 0.5, borderColor: on ? '#F0D9C8' : T.line }, pressed && { opacity: 0.7 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '700', color: on ? T.orangeDeep : T.text }} numberOfLines={1}>{se.title || '新对话'}</Text>
+                    {on ? <Ic name="chat" size={13} color={T.orangeDeep} /> : null}
+                  </View>
+                  <Text style={{ fontSize: 10.5, color: T.sub, marginTop: 2 }}>{(se.messages || []).length} 条 · {fmtDate(se.updatedAt || se.createdAt || Date.now())}</Text>
+                </Pressable>
+              );
+            })}
+            {!sessions.length ? <Text style={{ fontSize: 12, color: T.sub, textAlign: 'center', marginTop: 30 }}>还没有对话</Text> : null}
+          </ScrollView>
+          <Text style={{ fontSize: 10, color: T.sub, paddingVertical: 10, textAlign: 'center' }}>长按对话可删除</Text>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 export default function Ask({ toast, prefill, clearPrefill }) {
   const s = useStore();
   const [q, setQ] = useState('');
   const [running, setRunning] = useState(false);
+  const [drawer, setDrawer] = useState(false);
+  const [delTarget, setDelTarget] = useState(null);
   const cancelRef = useRef(false);
   const scrollRef = useRef(null);
-  const chats = s.chats || [];
+  const sessions = s.sessions || [];
+  const cur = sessions.find((x) => x.id === s.currentSessionId) || sessions[0];
+  const chats = (cur && cur.messages) || [];
 
+  /* 保证至少有一个会话 */
   useEffect(() => {
-    if (prefill) { setQ(prefill); clearPrefill(); }
-  }, [prefill]);
+    if (!cur) {
+      const id = uid();
+      setState((st) => ({ ...st, sessions: [{ id, title: '新对话', createdAt: Date.now(), updatedAt: Date.now(), messages: [] }], currentSessionId: id }));
+    } else if (cur.id !== s.currentSessionId) {
+      setState((st) => ({ ...st, currentSessionId: cur.id }));
+    }
+  }, [cur && cur.id]);
+
+  useEffect(() => { if (prefill) { setQ(prefill); clearPrefill(); } }, [prefill]);
 
   useEffect(() => {
     const t = setTimeout(() => scrollRef.current && scrollRef.current.scrollToEnd({ animated: true }), 120);
     return () => clearTimeout(t);
   }, [chats.length, running]);
 
+  const patchCur = (fn) => setState((st) => ({
+    ...st,
+    sessions: st.sessions.map((se) => (se.id === cur.id ? { ...fn(se), updatedAt: Date.now() } : se)),
+  }));
+
   const send = async (text) => {
     const question = (text || q).trim();
-    if (!question || running) return;
+    if (!question || running || !cur) return;
     setQ('');
     const chatId = uid();
-    setState((st) => ({ ...st, chats: [...st.chats, { id: chatId, q: question, a: '', steps: [], actions: [], at: Date.now() }].slice(-40) }));
+    patchCur((se) => ({ ...se, title: se.messages.length ? se.title : question.slice(0, 14), messages: [...se.messages, { id: chatId, q: question, a: '', steps: [], actions: [], at: Date.now() }] }));
     setRunning(true);
     cancelRef.current = false;
     try {
       const { answer, steps, actions } = await runAgent(question, {
-        onStep: (newSteps) => setState((st) => ({ ...st, chats: st.chats.map((c) => (c.id === chatId ? { ...c, steps: newSteps } : c)) })),
+        onStep: (newSteps) => patchCur((se) => ({ ...se, messages: se.messages.map((c) => (c.id === chatId ? { ...c, steps: newSteps } : c)) })),
         cancelled: () => cancelRef.current,
       });
-      setState((st) => ({ ...st, chats: st.chats.map((c) => (c.id === chatId ? { ...c, a: answer, steps, actions } : c)) }));
+      patchCur((se) => ({ ...se, messages: se.messages.map((c) => (c.id === chatId ? { ...c, a: answer, steps, actions } : c)) }));
     } catch (e) {
-      setState((st) => ({ ...st, chats: st.chats.map((c) => (c.id === chatId ? { ...c, a: '出错: ' + String((e && e.message) || e).slice(0, 60) } : c)) }));
+      patchCur((se) => ({ ...se, messages: se.messages.map((c) => (c.id === chatId ? { ...c, a: '出错: ' + String((e && e.message) || e).slice(0, 60) } : c)) }));
     }
     setRunning(false);
+  };
+
+  const newSession = () => {
+    const id = uid();
+    setState((st) => ({ ...st, sessions: [{ id, title: '新对话', createdAt: Date.now(), updatedAt: Date.now(), messages: [] }, ...st.sessions], currentSessionId: id }));
+    setDrawer(false);
+    setQ('');
   };
 
   return (
     <View style={{ flex: 1 }}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0} style={{ flex: 1 }}>
-        <View style={{ paddingHorizontal: 14, marginTop: 10 }}>
-          <Text style={{ fontSize: 20, fontWeight: '800', color: T.text }}>对话</Text>
-          <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>团团会自己查你的记忆再回答 · 也能帮你记事</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, marginTop: 10 }}>
+          <Pressable onPress={() => setDrawer(true)} style={({ pressed }) => [{ backgroundColor: '#fff', borderRadius: 99, padding: 8, marginRight: 10 }, pressed && { opacity: 0.6 }]}>
+            <Ic name="menu" size={17} color={T.text2} />
+          </Pressable>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 19, fontWeight: '800', color: T.text }} numberOfLines={1}>{(cur && cur.title) || '对话'}</Text>
+            <Text style={{ fontSize: 11, color: T.sub, marginTop: 1 }}>团团会自己查记忆再回答 · 也能帮你记事</Text>
+          </View>
+          <Pressable onPress={newSession} style={({ pressed }) => [{ backgroundColor: '#fff', borderRadius: 99, padding: 8, marginLeft: 10 }, pressed && { opacity: 0.6 }]}>
+            <Ic name="edit" size={17} color={T.text2} />
+          </Pressable>
         </View>
 
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }}
@@ -128,11 +196,6 @@ export default function Ask({ toast, prefill, clearPrefill }) {
               </View>
             </View>
           ))}
-          {chats.length > 3 ? (
-            <Pressable onPress={() => setState((st) => ({ ...st, chats: [] }))} style={{ alignSelf: 'center', marginTop: 14 }}>
-              <Text style={{ fontSize: 11, color: T.sub }}>清空对话</Text>
-            </Pressable>
-          ) : null}
         </ScrollView>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 8, paddingBottom: 90, backgroundColor: T.bg }}>
@@ -150,6 +213,22 @@ export default function Ask({ toast, prefill, clearPrefill }) {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      <SessionDrawer
+        visible={drawer} onClose={() => setDrawer(false)}
+        sessions={sessions} currentId={s.currentSessionId}
+        onNew={newSession}
+        onSwitch={(id) => setState((st) => ({ ...st, currentSessionId: id }))}
+        onDelete={(se) => setDelTarget(se)}
+      />
+      <ActionSheet visible={!!delTarget} onClose={() => setDelTarget(null)} title={delTarget ? (delTarget.title || '新对话') : ''}
+        options={delTarget ? [{ icon: 'trash', label: '删除该对话', tone: 'danger', onPress: () => {
+          setState((st) => {
+            const rest = st.sessions.filter((x) => x.id !== delTarget.id);
+            return { ...st, sessions: rest, currentSessionId: st.currentSessionId === delTarget.id ? ((rest[0] && rest[0].id) || '') : st.currentSessionId };
+          });
+          toast('对话已删除');
+        } }] : []} />
     </View>
   );
 }

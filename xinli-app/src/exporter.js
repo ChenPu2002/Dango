@@ -165,5 +165,18 @@ export async function linkSystemFolder() {
   return !!dir;
 }
 
+/* 删除一条记录在云文档中的衍生物（索引条目 + 已关联时的镜像文件） */
+export async function removeJobFiles(job) {
+  const names = jobFiles(job).map((f) => f.name);
+  setState((s) => ({ ...s, exportedFiles: (s.exportedFiles || []).filter((f) => !names.includes(f.name)) }));
+  const st = getState();
+  const root = st.settings.exportRoot || (st.settings.exportDir && st.settings.exportDir.includes('/tree/') ? st.settings.exportDir.split('/document/')[0] : '');
+  if (!root) return;
+  const dir = deriveDirUri(root);
+  for (const n of names) {
+    try { await FS.deleteAsync(`${dir}%2F${encodeURIComponent(n)}`, { idempotent: true }); } catch (_) {}
+  }
+}
+
 /* 兼容旧入口名 */
 export const pickExportDir = ensureExportDir;

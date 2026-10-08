@@ -1,7 +1,7 @@
 /* 团子 Agent Runtime（参考 Eta AgentLoop）：
  * 工具循环：LLM 决策 → 本地执行工具 → 结果回填 → 再决策（≤8轮）→ 最终回答
  * 执行轨迹实时上抛（onStep），支持取消 */
-import { getState, setState, uid } from './store';
+import { getState, setState, uid, parseDue, todayKeyISO } from './store';
 import { llmChatRaw } from './api';
 import { writeMemoryFile } from './exporter';
 
@@ -101,9 +101,10 @@ export function executeTool(name, args) {
     case 'add_todo': {
       const text = String(A.text || '').trim();
       if (!text) return { error: 'text 为空' };
-      const t = { id: uid(), text, due: String(A.due || ''), from: '团团(对话)', done: false, archived: false, createdAt: Date.now(), visibleFrom: todayStr() };
+      const { due, dueAt } = parseDue(String(A.due || ''));
+      const t = { id: uid(), text, due, dueAt, from: '团团(对话)', done: false, archived: false, createdAt: Date.now(), visibleFrom: todayStr() };
       setState((s2) => ({ ...s2, todos: [t, ...s2.todos] }));
-      return { ok: true, added: text };
+      return { ok: true, added: text, due: due || '', dueAt };
     }
     case 'complete_todo': {
       const q = String(A.text || '');
@@ -129,7 +130,7 @@ export function executeTool(name, args) {
   }
 }
 
-export const todayStr = () => `${new Date().getFullYear()}-${new Date().getMonth() + 1}-${new Date().getDate()}`;
+export const todayStr = todayKeyISO;
 
 /* ---------- Agent Loop ---------- */
 export async function runAgent(question, { onStep, cancelled } = {}) {

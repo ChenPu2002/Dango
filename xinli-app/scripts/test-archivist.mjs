@@ -9,7 +9,7 @@ const { executeTool, todayStr } = await import('../src/agent.js');
 const DAY = 864e5;
 const now = Date.now();
 const yd = new Date(now - DAY);
-const yStr = `${yd.getFullYear()}-${yd.getMonth() + 1}-${yd.getDate()}`;
+const yStr = `${yd.getFullYear()}-${String(yd.getMonth() + 1).padStart(2, '0')}-${String(yd.getDate()).padStart(2, '0')}`;
 const today = todayStr();
 
 await initStore();

@@ -1,11 +1,12 @@
 /* 手帐：App 内文档引擎（store 为真相源， 文档/团子/ 为同步镜像） */
 import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable, TextInput, Modal, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Pressable, TextInput, Modal, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { Card, Btn, MarkdownText } from '../ui';
 import { Ic } from '../icons';
 import { T } from '../theme';
 import { useStore, setState, fmtDate } from '../store';
 import { writeMemoryFile, exportAll, ensureExportDir } from '../exporter';
+import { deleteJob } from '../pipeline';
 
 /* 图标配色：不同文档类型的柔和底色 */
 const DOC_STYLE = {
@@ -104,25 +105,46 @@ export default function Journal({ toast, goAsk }) {
       </View>
 
       <ScrollView style={{ flex: 1, marginTop: 2 }} contentContainerStyle={{ paddingBottom: 170 }}>
-        {filtered.length ? filtered.map((d) => {
-          const st = DOC_STYLE[d.type === 'archive' ? `archive_${d.iconKind}` : d.type] || DOC_STYLE.archive_doc;
-          return (
-            <Pressable key={d.key} onPress={() => { setReader(d); setEditing(false); }} style={({ pressed }) => [pressed && { opacity: 0.6 }]}>
-              <Card style={{ paddingVertical: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: st.bg, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                    <Ic name={st.icon} size={17} color={st.fg} />
+        {filtered.length ? (() => {
+          let shownNotes = false, shownSum = false, lastDay = '';
+          return filtered.map((d) => {
+            const st = DOC_STYLE[d.type === 'archive' ? `archive_${d.iconKind}` : d.type] || DOC_STYLE.archive_doc;
+            const els = [];
+            const label = (key, text) => (
+              <View key={key} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, marginBottom: -2 }}>
+                <View style={{ width: 3.5, height: 12, borderRadius: 2, backgroundColor: T.orange, marginRight: 7 }} />
+                <Text style={{ fontSize: 12, fontWeight: '800', color: T.text2 }}>{text}</Text>
+                <View style={{ flex: 1, height: 0.5, backgroundColor: T.line, marginLeft: 10 }} />
+              </View>
+            );
+            if (d.type === 'note' && !shownNotes) { shownNotes = true; els.push(label('lb-note', '课程笔记')); }
+            if ((d.type === 'daily' || d.type === 'weekly') && !shownSum) { shownSum = true; els.push(label('lb-sum', '小结')); }
+            if (d.type === 'archive' && d.job) {
+              const dd = new Date(d.job.createdAt);
+              const day = `${dd.getMonth() + 1}月${dd.getDate()}日 · 周${'日一二三四五六'[dd.getDay()]}`;
+              if (day !== lastDay) { lastDay = day; els.push(label(`lb-${d.key}`, day)); }
+            }
+            els.push(
+              <Pressable key={d.key} onPress={() => { setReader(d); setEditing(false); }}
+                android_ripple={{ color: 'rgba(60,40,20,0.05)', foreground: true }}
+                style={{ borderRadius: T.radius }}>
+                <Card style={{ paddingVertical: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: st.bg, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                      <Ic name={st.icon} size={17} color={st.fg} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: T.text }} numberOfLines={1}>{d.title}</Text>
+                      <Text style={{ fontSize: 10.5, color: T.sub, marginTop: 2 }}>{d.sub}</Text>
+                    </View>
+                    <Ic name="chevR" size={15} color="#C6BFB4" />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: T.text }} numberOfLines={1}>{d.title}</Text>
-                    <Text style={{ fontSize: 10.5, color: T.sub, marginTop: 2 }}>{d.sub}</Text>
-                  </View>
-                  <Ic name="chevR" size={15} color="#C6BFB4" />
-                </View>
-              </Card>
-            </Pressable>
-          );
-        }) : (
+                </Card>
+              </Pressable>
+            );
+            return els;
+          });
+        })() : (
           <Card style={{ alignItems: 'center', paddingVertical: 26 }}>
             <View style={{ width: 52, height: 52, borderRadius: 99, backgroundColor: '#F0EDE7', alignItems: 'center', justifyContent: 'center' }}>
               <Ic name="search" size={22} color="#B3ACA1" />
@@ -174,7 +196,20 @@ export default function Journal({ toast, goAsk }) {
                     </>
                   )
                 ) : (
-                  <Btn text="就此文档问团团" onPress={() => { const q2 = `关于「${reader.title}」：`; setReader(null); goAsk(q2); }} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Btn text="就此文档问团团" onPress={() => { const q2 = `关于「${reader.title}」：`; setReader(null); goAsk(q2); }} style={{ flex: 1, marginRight: 8 }} />
+                    {reader.type === 'archive' && reader.job ? (
+                      <Btn text="删除" tone="danger" onPress={() => Alert.alert('删除这条记录？', '将一并删除其衍生的卡片、待办、心情、云文档，并从剩余记录重建课程笔记与画像（隐私级联）', [
+                        { text: '取消', style: 'cancel' },
+                        { text: '删除并清除衍生', style: 'destructive', onPress: async () => {
+                          const jid = reader.job.id;
+                          setReader(null);
+                          await deleteJob(jid, true);
+                          toast('已删除，衍生记忆已重建');
+                        } },
+                      ])} />
+                    ) : null}
+                  </View>
                 )}
               </View>
             </View>
