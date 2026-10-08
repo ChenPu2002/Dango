@@ -91,10 +91,11 @@ function SessionDrawer({ visible, onClose, sessions, currentId, onNew, onSwitch,
   }, [visible]);
   const translateX = slide.interpolate({ inputRange: [0, 1], outputRange: [-W - 20, 0] });
   const dim = slide.interpolate({ inputRange: [0, 1], outputRange: [0, 0.4] });
+  /* 抽屉悬停在 Tab 栏之上，不遮挡底栏（底栏保持可见可点） */
   return (
-    <View pointerEvents={visible ? 'auto' : 'none'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+    <View pointerEvents={visible ? 'auto' : 'none'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 84 }}>
       <AnimatedPressable onPress={onClose} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', opacity: dim }} />
-      <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: W, backgroundColor: '#FFFDF9', borderRightWidth: 0.5, borderRightColor: T.line, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 6, height: 0 }, elevation: 12, transform: [{ translateX }], paddingTop: 66, paddingHorizontal: 14 }}>
+      <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: W, backgroundColor: '#FFFDF9', borderRightWidth: 0.5, borderRightColor: T.line, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 6, height: 0 }, elevation: 12, transform: [{ translateX }], paddingTop: 66, paddingHorizontal: 14, borderTopRightRadius: 0 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
           <Text style={{ fontSize: 17, fontWeight: '800', color: T.text, flex: 1 }}>对话记录</Text>
           <Pressable onPress={onNew} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', backgroundColor: T.orangeSoft, borderRadius: 99, paddingHorizontal: 11, paddingVertical: 6 }, pressed && { opacity: 0.6 }]}>
