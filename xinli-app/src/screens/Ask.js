@@ -1,64 +1,90 @@
-import React, { useState, useRef, useEffect } from 'react';
+/* 对话：Agent Runtime 前端（工具循环 + 执行轨迹 + 行动结果 + 取消） */
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
-import { Card, PulseDot, MarkdownText } from '../ui';
+import { Card, MarkdownText, PulseDot } from '../ui';
 import { T } from '../theme';
-import { useStore, setState, getState, uid } from '../store';
-import { llmChat, ASK_SYS, buildAskContext } from '../api';
+import { useStore, setState, uid } from '../store';
+import { runAgent } from '../agent';
 
-const QUICK = ['我这周学了什么？', '高数作业是哪几题？', '我最近的心情怎么样？', '周五要交什么？'];
+const QUICK = ['我最近的作业有哪些？', '上周学了什么？', '帮我记一下周五要交大纲', '我现在心情怎么样？'];
 
-export default function Ask({ toast }) {
-    const s = useStore();
+function StepLine({ steps }) {
+  if (!steps || !steps.length) return null;
+  return (
+    <View style={{ marginTop: 6, backgroundColor: '#FAF7F4', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
+      {steps.slice(-4).map((st, i) => (
+        <Text key={i} style={{ fontSize: 10.5, color: T.sub, lineHeight: 16 }}>🔧 {st.brief}</Text>
+      ))}
+    </View>
+  );
+}
+
+function ActionChips({ actions }) {
+  if (!actions || !actions.length) return null;
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 }}>
+      {actions.map((a, i) => (
+        <View key={i} style={{ backgroundColor: T.greenSoft, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 4, marginRight: 6, marginTop: 4 }}>
+          <Text style={{ fontSize: 10.5, fontWeight: '700', color: T.green }}>
+            {a.name === 'add_todo' ? `✅ 已添加：${(a.args && a.args.text) || ''}` : a.name === 'complete_todo' ? `✅ 已完成：${(a.result && a.result.completed) || ''}` : a.name === 'update_profile' ? '✏️ 画像已更新' : `✏️ ${(a.args && a.args.course) || ''}笔记已更新`}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+export default function Ask({ toast, prefill, clearPrefill }) {
+  const s = useStore();
   const [q, setQ] = useState('');
-  const [thinking, setThinking] = useState(false);
+  const [running, setRunning] = useState(false);
+  const cancelRef = useRef(false);
   const scrollRef = useRef(null);
-  const chats = s.chats || []; // 旧→新，最新在底部
+  const chats = s.chats || [];
+
+  useEffect(() => {
+    if (prefill) { setQ(prefill); clearPrefill(); }
+  }, [prefill]);
 
   useEffect(() => {
     const t = setTimeout(() => scrollRef.current && scrollRef.current.scrollToEnd({ animated: true }), 120);
     return () => clearTimeout(t);
-  }, [chats.length, thinking]);
+  }, [chats.length, running]);
 
   const send = async (text) => {
     const question = (text || q).trim();
-    if (!question || thinking) return;
+    if (!question || running) return;
     setQ('');
     const chatId = uid();
-    setState((st) => ({ ...st, chats: [...st.chats, { id: chatId, q: question, a: '', at: Date.now() }].slice(-50) }));
-    setThinking(true);
+    setState((st) => ({ ...st, chats: [...st.chats, { id: chatId, q: question, a: '', steps: [], actions: [], at: Date.now() }].slice(-40) }));
+    setRunning(true);
+    cancelRef.current = false;
     try {
-      const ctx = buildAskContext(getState(), question);
-      const a = await llmChat([
-        { role: 'system', content: ASK_SYS },
-        { role: 'user', content: `记忆上下文：\n${ctx}\n\n用户提问：${question}` },
-      ], 800);
-      setState((st) => ({ ...st, chats: st.chats.map((c) => (c.id === chatId ? { ...c, a } : c)) }));
+      const { answer, steps, actions } = await runAgent(question, {
+        onStep: (newSteps) => setState((st) => ({ ...st, chats: st.chats.map((c) => (c.id === chatId ? { ...c, steps: newSteps } : c)) })),
+        cancelled: () => cancelRef.current,
+      });
+      setState((st) => ({ ...st, chats: st.chats.map((c) => (c.id === chatId ? { ...c, a: answer, steps, actions } : c)) }));
     } catch (e) {
-      const msg = String((e && e.message) || e).slice(0, 80);
-      setState((st) => ({ ...st, chats: st.chats.map((c) => (c.id === chatId ? { ...c, a: '查询失败：' + msg } : c)) }));
+      setState((st) => ({ ...st, chats: st.chats.map((c) => (c.id === chatId ? { ...c, a: '出错: ' + String((e && e.message) || e).slice(0, 60) } : c)) }));
     }
-    setThinking(false);
+    setRunning(false);
   };
 
   return (
     <View style={{ flex: 1 }}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0} style={{ flex: 1 }}>
-        <View style={{ paddingHorizontal: 14, marginTop: 12 }}>
-          <Text style={{ fontSize: 20, fontWeight: '800', color: T.text }}>问答 💬</Text>
-          <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>随时问你的历史记录 · 基于本地记忆（画像/笔记/卡片/转写）</Text>
+        <View style={{ paddingHorizontal: 2, marginTop: 10 }}>
+          <Text style={{ fontSize: 20, fontWeight: '800', color: T.text }}>对话 💬</Text>
+          <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>团子会自己查你的记忆再回答 · 也能帮你记事</Text>
         </View>
 
-        <ScrollView
-          ref={scrollRef}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }}
-          onContentSizeChange={() => scrollRef.current && scrollRef.current.scrollToEnd({ animated: true })}
-          keyboardShouldPersistTaps="handled"
-        >
+        <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 2, paddingBottom: 12 }}
+          onContentSizeChange={() => scrollRef.current && scrollRef.current.scrollToEnd({ animated: true })} keyboardShouldPersistTaps="handled">
           {!chats.length ? (
             <Card style={{ alignItems: 'center', paddingVertical: 18 }}>
-              <Text style={{ fontSize: 28 }}>💬</Text>
-              <Text style={{ fontSize: 12, color: T.sub, marginTop: 6 }}>试试这些问题</Text>
+              <Text style={{ fontSize: 28 }}>🍡</Text>
+              <Text style={{ fontSize: 12, color: T.sub, marginTop: 6 }}>试试这些（团子会真的去查/去记）</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 8 }}>
                 {QUICK.map((t) => (
                   <Pressable key={t} onPress={() => send(t)} style={({ pressed }) => [{ backgroundColor: T.orangeSoft, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 7, margin: 4 }, pressed && { opacity: 0.6 }]}>
@@ -71,16 +97,23 @@ export default function Ask({ toast }) {
 
           {chats.map((c) => (
             <View key={c.id} style={{ marginTop: 12 }}>
-              <View style={{ alignSelf: 'flex-end', backgroundColor: T.orange, borderRadius: 16, borderBottomRightRadius: 4, paddingHorizontal: 2, paddingVertical: 10, maxWidth: '84%' }}>
+              <View style={{ alignSelf: 'flex-end', backgroundColor: T.orange, borderRadius: 16, borderBottomRightRadius: 4, paddingHorizontal: 14, paddingVertical: 10, maxWidth: '84%' }}>
                 <Text style={{ fontSize: 13.5, color: '#fff', lineHeight: 21 }}>{c.q}</Text>
               </View>
-              <View style={{ alignSelf: 'flex-start', backgroundColor: '#fff', borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 2, paddingVertical: 10, maxWidth: '92%', marginTop: 8, ...T.shadow }}>
+              <View style={{ alignSelf: 'flex-start', backgroundColor: '#fff', borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10, maxWidth: '94%', marginTop: 8, ...T.shadow }}>
                 {c.a ? (
-                  <MarkdownText text={c.a} style={{ fontSize: 13, color: T.text2 }} />
+                  <>
+                    <MarkdownText text={c.a} style={{ fontSize: 13, color: T.text2 }} />
+                    <ActionChips actions={c.actions} />
+                    {c.steps && c.steps.length ? <StepLine steps={c.steps} /> : null}
+                  </>
                 ) : (
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <PulseDot />
-                    <Text style={{ fontSize: 12, color: T.sub, marginLeft: 8 }}>翻查记忆中…</Text>
+                  <View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <PulseDot />
+                      <Text style={{ fontSize: 12, color: T.sub, marginLeft: 8 }}>团子思考中…</Text>
+                    </View>
+                    <StepLine steps={c.steps} />
                   </View>
                 )}
               </View>
@@ -93,19 +126,19 @@ export default function Ask({ toast }) {
           ) : null}
         </ScrollView>
 
-        {/* 输入行：固定底部，键盘弹出自动上推 */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 8, paddingBottom: 88, borderTopWidth: 0.5, borderTopColor: T.line, backgroundColor: T.bg }}>
-          <TextInput
-            value={q} onChangeText={setQ} placeholder="问点什么…（如：作业是哪几题？）"
-            placeholderTextColor={T.sub}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 2, paddingTop: 8, paddingBottom: 88, borderTopWidth: 0.5, borderTopColor: T.line, backgroundColor: T.bg }}>
+          <TextInput value={q} onChangeText={setQ} placeholder="问点什么，或让团子记点事…" placeholderTextColor={T.sub}
             onSubmitEditing={() => send()} returnKeyType="send"
-            style={{ flex: 1, fontSize: 13.5, color: T.text, backgroundColor: '#fff', borderRadius: 99, paddingHorizontal: 16, paddingVertical: 11, ...T.shadow }}
-          />
-          <Pressable onPress={() => send()} disabled={thinking} style={({ pressed }) => [
-            { marginLeft: 10, backgroundColor: q.trim() && !thinking ? T.orange : '#E3E6EA', borderRadius: 99, paddingHorizontal: 18, paddingVertical: 11 }, pressed && { opacity: 0.7 },
-          ]}>
-            <Text style={{ fontSize: 13, fontWeight: '800', color: '#fff' }}>发送</Text>
-          </Pressable>
+            style={{ flex: 1, fontSize: 13.5, color: T.text, backgroundColor: '#fff', borderRadius: 99, paddingHorizontal: 16, paddingVertical: 11, ...T.shadow }} />
+          {running ? (
+            <Pressable onPress={() => { cancelRef.current = true; }} style={{ marginLeft: 10, backgroundColor: T.redSoft, borderWidth: 1.5, borderColor: '#F5B8B0', borderRadius: 99, paddingHorizontal: 16, paddingVertical: 11 }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: T.red }}>停止</Text>
+            </Pressable>
+          ) : (
+            <Pressable onPress={() => send()} style={({ pressed }) => [{ marginLeft: 10, backgroundColor: q.trim() ? T.orange : '#E3E6EA', borderRadius: 99, paddingHorizontal: 18, paddingVertical: 11 }, pressed && { opacity: 0.7 }]}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#fff' }}>发送</Text>
+            </Pressable>
+          )}
         </View>
       </KeyboardAvoidingView>
     </View>

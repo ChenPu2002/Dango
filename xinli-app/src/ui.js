@@ -203,13 +203,14 @@ export function InputSheet({ visible, onClose, title, initial, placeholder, mult
     </Sheet>
   );
 }
-export function TabBar({ tabs, active, onChange }) {
+export function TabBar({ tabs, active, onChange, fabGap }) {
+  const n = tabs.length;
   return (
     <View style={{
       position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,.96)',
       borderTopWidth: 0.5, borderTopColor: T.line, flexDirection: 'row', paddingTop: 7, paddingBottom: 18,
     }}>
-      {tabs.map((t) => (
+      {tabs.map((t, i) => (
         <Pressable key={t.key} onPress={() => onChange(t.key)} style={{ flex: 1, alignItems: 'center' }}>
           <Text style={{ fontSize: 20, opacity: active === t.key ? 1 : 0.45, marginBottom: 2 }}>{t.icon}</Text>
           <Text style={{ fontSize: 10.5, fontWeight: '600', color: active === t.key ? T.orange : T.sub }}>{t.label}</Text>

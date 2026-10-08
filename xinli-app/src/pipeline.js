@@ -154,6 +154,62 @@ function applyExtractFallback(jobId, ex) {
   return derived;
 }
 
+/* ---------- 日终归档 Agent：今日工作台清空，过去沉入记忆 ---------- */
+export const archToday = () => `${new Date().getFullYear()}-${new Date().getMonth() + 1}-${new Date().getDate()}`;
+
+export async function runArchivist() {
+  const today = archToday();
+  const st = getState();
+  if (st.lastArchivistDay === today) return;
+  console.log('[dango] 🧹 日终归档开始', today);
+  try {
+    /* 1. 非今日卡片 → 按日失效 */
+    const staleCards = st.cards.filter((c) => c.status === 'active' && new Date(c.createdAt).toDateString() !== new Date().toDateString());
+    if (staleCards.length) setState((s2) => ({ ...s2, cards: s2.cards.map((c) => (staleCards.includes(c) ? { ...c, status: 'archived', archivedReason: '按日失效' } : c)) }));
+    /* 2. 未完成待办 → LLM 决策 carry / drop */
+    const pend = getState().todos.filter((t) => !t.done && !t.archived && t.visibleFrom && t.visibleFrom < today);
+    if (pend.length) {
+      try {
+        const out = await llmChat([
+          { role: 'system', content: '你是待办管家。对每条未完成待办决策：carry=仍有意义挪到今天；drop=已无意义/已过期，沉入记忆即可。只输出 JSON：{"decisions":[{"id":"...","action":"carry|drop","reason":"..."}]}' },
+          { role: 'user', content: `今天是${today}。待办：\n${pend.map((t) => `${t.id}|${t.text}${t.due ? '|截止' + t.due : ''}`).join('\n')}` },
+        ], 600);
+        const d = parseExtractJson(out);
+        setState((s2) => ({
+          ...s2,
+          todos: s2.todos.map((t) => {
+            const dec = (d.decisions || []).find((x) => x.id === t.id);
+            if (!dec) return t;
+            if (dec.action === 'carry') return { ...t, visibleFrom: today };
+            if (dec.action === 'drop') return { ...t, archived: true, archivedReason: dec.reason || '归档' };
+            return t;
+          }),
+        }));
+        console.log('[dango] 🧹 待办流转:', (d.decisions || []).map((x) => x.action).join(','));
+      } catch (e) { console.log('[dango] 待办流转失败', String((e && e.message) || e).slice(0, 50)); }
+    }
+    /* 3. 补日结（当天最后一条完成时也会触发，这里兜底） */
+    await maybeDailyRollup().catch(() => {});
+    /* 4. 周日 → 周结压缩 */
+    if (new Date().getDay() === 0) {
+      const old = getState().dailies.filter((d) => {
+        const [m, dd] = d.date.split('.').map(Number);
+        return (new Date() - new Date(new Date().getFullYear(), m - 1, dd)) > 7 * 864e5 && !getState().weeklies.some((w) => (w.range || '').includes(d.date));
+      });
+      if (old.length >= 2) {
+        try {
+          const out = await llmChat([{ role: 'system', content: '把每日小结压缩成一段周记。只输出 JSON：{"summary":"..."}' }, { role: 'user', content: old.map((d) => `[${d.date}] ${d.summary}`).join('\n') }], 400);
+          const w = parseExtractJson(out);
+          setState((s2) => ({ ...s2, weeklies: [{ range: old[0].date + '-' + old[old.length - 1].date, summary: w.summary || '' }, ...s2.weeklies].slice(0, 8) }));
+        } catch (_) {}
+      }
+    }
+    setState((s2) => ({ ...s2, lastArchivistDay: today }));
+    try { await writeMemoryFile(); } catch (_) {}
+    console.log('[dango] 🧹 归档完成: 卡片失效', staleCards.length, '张, 待办流转', pend.length, '条');
+  } catch (e) { console.log('[dango] 归档异常', String((e && e.message) || e).slice(0, 60)); }
+}
+
 /* ---------- 每日整理（防信息爆炸：日结压缩 + 已掌握卡片降温归档）---------- */
 async function maybeDailyRollup() {
   try {

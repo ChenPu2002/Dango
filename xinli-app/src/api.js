@@ -14,6 +14,22 @@ export async function llmChat(messages, maxTokens = 2200) {
   return j.choices[0].message.content;
 }
 
+/* Agent 用：带 tools 的原始调用，返回完整响应（含 tool_calls） */
+export async function llmChatRaw(messages, tools, maxTokens = 1500) {
+  const { llmUrl, llmKey, llmModel } = getState().settings;
+  const body = { model: llmModel, messages, max_tokens: maxTokens };
+  if (tools) body.tools = tools;
+  const r = await fetch(llmUrl, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${llmKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json();
+  if (j.error) throw new Error(j.error.message || 'LLM 错误');
+  if (!j.choices || !j.choices[0]) throw new Error('LLM 响应异常');
+  return j;
+}
+
 export const EXTRACT_SYS = `你是「团子」手机端学习助理，把用户给的课堂/生活材料提炼成结构化数据。只输出 JSON，不要输出任何其他文字，格式：
 {"title":"3-8字标题","summary":"2-3句摘要","outline":["提纲要点"],"keywords":["关键词"],"points":["关键细节/公式/任务"],"cards":[{"q":"复习问题","a":"答案","kind":"knowledge"}],"funs":[{"text":"材料中有趣的见闻/冷知识/彩蛋(1条以内，无则空)"}],"todos":[{"text":"待办事项","due":"截止时间(可空)"}],"mood":{"emoji":"😌","tags":["#标签"],"moments":[{"t":"HH:MM","text":"高光或低谷时刻描述"}],"score":3}}
 规则：

@@ -45,12 +45,13 @@ function normalize(s) {
     weeklies: s.weeklies || [],
     lastNightlyAt: s.lastNightlyAt || 0,
     exportedFiles: s.exportedFiles || [],
+    lastArchivistDay: s.lastArchivistDay || '',
     funs: s.funs || [],
     chats: s.chatsOrder === 'asc' ? (s.chats || []) : (s.chats || []).slice().reverse(),
     chatsOrder: 'asc',
     cards: (s.cards || []).map((c) => ({ status: 'active', version: 1, history: [], topic: c.from || '日常', ...c })),
     jobs: s.jobs || [],
-    todos: s.todos || [],
+    todos: (s.todos || []).map((t) => ({ visibleFrom: '', archived: false, ...t })),
     moods: s.moods || [],
   };
 }

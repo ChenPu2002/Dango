@@ -14,10 +14,6 @@ export default function Me({ toast, go }) {
   const [cfg, setCfg] = useState(s.settings);
   const [dirty, setDirty] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [showFiles, setShowFiles] = useState(false);
-  const [viewFile, setViewFile] = useState(null);   // {name, content}
-  const [memoryView, setMemoryView] = useState(false);
-  const [profileEdit, setProfileEdit] = useState(false);
 
   const loadFiles = async () => {
     setShowFiles(true);
@@ -100,8 +96,7 @@ export default function Me({ toast, go }) {
 
       <Section title="文档固化（手机本地）">
         <Card style={{ paddingHorizontal: 16 }}>
-          <Row icon="📁" iconBg={T.blueSoft} title="已导出文件" sub={s.settings.exportDir ? '点击查看 文档/团子 内容' : '未设置存储位置'}
-            onPress={loadFiles} />
+          <Row icon="📁" iconBg={T.blueSoft} title="文档同步位置" sub={s.settings.exportDir ? '已授权 · 文档/团子/' : '未授权（首次同步时引导授权）'} />
           <Divider />
           <Row icon="📤" iconBg={T.orangeSoft} title="立即导出全部" sub={exporting ? '导出中…' : '课程笔记 + 近30条记录（转写/提炼）'}
             onPress={async () => {
@@ -112,8 +107,8 @@ export default function Me({ toast, go }) {
               setExporting(false);
             }} />
           <Divider />
-          <Row icon="🧠" iconBg={T.purpleSoft} title="团子手帐.md" sub="画像/课程笔记/日结 · 点击查看与编辑画像"
-            onPress={() => setMemoryView(true)} />
+          <Row icon="📖" iconBg={T.orangeSoft} title="浏览与编辑记忆" sub="画像/课程笔记/档案 · 在「手帐」页操作"
+            onPress={() => go && go('journal')} />
 
           <Divider />
           <Row icon="🔁" iconBg={T.greenSoft} title="处理完自动导出" sub="每条记录完成提炼后自动写入文档目录"
@@ -121,21 +116,6 @@ export default function Me({ toast, go }) {
         </Card>
       </Section>
 
-      {showFiles ? (
-        <Card style={{ marginTop: 6 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-            <Text style={{ fontSize: 13.5, fontWeight: '800', color: T.text, flex: 1 }}>文档/团子（手机文件管理可见）</Text>
-            <Pressable onPress={() => setShowFiles(false)}><Text style={{ fontSize: 12, color: T.sub }}>收起 ›</Text></Pressable>
-          </View>
-          {!(s.exportedFiles || []).length ? <Text style={{ fontSize: 12, color: T.sub, paddingVertical: 10 }}>空（先点「立即导出全部」）</Text>
-            : s.exportedFiles.slice(0, 30).map((f, i) => (
-              <Pressable key={i} onPress={() => setViewFile(f)} style={({ pressed }) => [{ paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: T.line }, pressed && { opacity: 0.5 }]}>
-                <Text style={{ fontSize: 12, color: T.text }} numberOfLines={1}>📄 {f.name}</Text>
-                <Text style={{ fontSize: 10, color: T.sub, marginTop: 2 }}>{new Date(f.at).toTimeString().slice(0, 5)} · 点击查看内容 ›</Text>
-              </Pressable>
-            ))}
-        </Card>
-      ) : null}
 
       <Section title="设备协同（预留）">
         <Card>
@@ -163,38 +143,6 @@ export default function Me({ toast, go }) {
           <Row icon="🔮" iconBg={T.orangeSoft} title="团子" sub="手机端自操作 Agent · 录音/照片 → ASR/多模态 → 结构化提炼" right={<Text style={{ fontSize: 12, color: T.sub }}>v0.4</Text>} />
         </Card>
       </Section>
-      {/* 文件内容预览 */}
-      <Sheet visible={!!viewFile} onClose={() => setViewFile(null)}>
-        {viewFile ? (
-          <View>
-            <Text style={{ fontSize: 15, fontWeight: '800', color: T.text, marginBottom: 8 }}>📄 {viewFile.name}</Text>
-            <Card style={{ marginTop: 0, backgroundColor: '#fff' }}>
-              <MarkdownText text={viewFile.content || '（无内容）'} style={{ fontSize: 12, color: T.text2 }} />
-            </Card>
-          </View>
-        ) : null}
-      </Sheet>
-
-      {/* 记忆文件查看 + 编辑画像 */}
-      <Sheet visible={memoryView} onClose={() => setMemoryView(false)}>
-        <View>
-          <Text style={{ fontSize: 16, fontWeight: '800', color: T.text, marginBottom: 8 }}>🧠 团子记忆</Text>
-          <Card style={{ marginTop: 0 }}>
-            <MarkdownText text={buildMemoryMd(getState())} style={{ fontSize: 11.5, color: T.text2 }} />
-          </Card>
-          <Btn text="✏️ 编辑画像（长期记忆）" onPress={() => { setMemoryView(false); setTimeout(() => setProfileEdit(true), 250); }} style={{ marginTop: 12 }} />
-        </View>
-      </Sheet>
-      <InputSheet
-        visible={profileEdit} onClose={() => setProfileEdit(false)}
-        title="编辑画像（AI 将以它为基准滚动更新）"
-        initial={s.profile && s.profile.text ? s.profile.text : ''} multiline
-        onSubmit={async (v) => {
-          setState((st) => ({ ...st, profile: { text: v.trim(), updatedAt: Date.now() } }));
-          toast('画像已更新');
-          try { await writeMemoryFile(); } catch (_) {}
-        }}
-      />
     </View>
   );
 }
