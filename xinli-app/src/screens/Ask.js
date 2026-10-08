@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { Card, MarkdownText, PulseDot } from '../ui';
+import { Ic } from '../icons';
 import { T } from '../theme';
 import { useStore, setState, uid } from '../store';
 import { runAgent } from '../agent';
@@ -11,9 +12,14 @@ const QUICK = ['我最近的作业有哪些？', '上周学了什么？', '帮�
 function StepLine({ steps }) {
   if (!steps || !steps.length) return null;
   return (
-    <View style={{ marginTop: 6, backgroundColor: '#FAF7F4', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
+    <View style={{ marginTop: 6, backgroundColor: '#F5F2ED', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
       {steps.slice(-4).map((st, i) => (
-        <Text key={i} style={{ fontSize: 10.5, color: T.sub, lineHeight: 16 }}>🔧 {st.brief}</Text>
+        <View key={i} style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ width: 14, alignItems: 'center', marginRight: 6 }}>
+            <View style={{ width: 4.5, height: 4.5, borderRadius: 99, backgroundColor: T.orange }} />
+          </View>
+          <Text style={{ flex: 1, fontSize: 10.5, color: T.sub, lineHeight: 16 }}>{st.brief}</Text>
+        </View>
       ))}
     </View>
   );
@@ -24,9 +30,10 @@ function ActionChips({ actions }) {
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 }}>
       {actions.map((a, i) => (
-        <View key={i} style={{ backgroundColor: T.greenSoft, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 4, marginRight: 6, marginTop: 4 }}>
-          <Text style={{ fontSize: 10.5, fontWeight: '700', color: T.green }}>
-            {a.name === 'add_todo' ? `✅ 已添加：${(a.args && a.args.text) || ''}` : a.name === 'complete_todo' ? `✅ 已完成：${(a.result && a.result.completed) || ''}` : a.name === 'update_profile' ? '✏️ 画像已更新' : `✏️ ${(a.args && a.args.course) || ''}笔记已更新`}
+        <View key={i} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: T.greenSoft, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 5, marginRight: 6, marginTop: 4 }}>
+          <Ic name="check" size={11} color={T.green} stroke={2.4} />
+          <Text style={{ fontSize: 10.5, fontWeight: '700', color: T.green, marginLeft: 4 }}>
+            {a.name === 'add_todo' ? `已添加：${(a.args && a.args.text) || ''}` : a.name === 'complete_todo' ? `已完成：${(a.result && a.result.completed) || ''}` : a.name === 'update_profile' ? '画像已更新' : `${(a.args && a.args.course) || ''}笔记已更新`}
           </Text>
         </View>
       ))}
@@ -75,16 +82,18 @@ export default function Ask({ toast, prefill, clearPrefill }) {
     <View style={{ flex: 1 }}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0} style={{ flex: 1 }}>
         <View style={{ paddingHorizontal: 2, marginTop: 10 }}>
-          <Text style={{ fontSize: 20, fontWeight: '800', color: T.text }}>对话 💬</Text>
-          <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>团子会自己查你的记忆再回答 · 也能帮你记事</Text>
+          <Text style={{ fontSize: 20, fontWeight: '800', color: T.text }}>对话</Text>
+          <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>团团会自己查你的记忆再回答 · 也能帮你记事</Text>
         </View>
 
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 2, paddingBottom: 12 }}
           onContentSizeChange={() => scrollRef.current && scrollRef.current.scrollToEnd({ animated: true })} keyboardShouldPersistTaps="handled">
           {!chats.length ? (
-            <Card style={{ alignItems: 'center', paddingVertical: 18 }}>
-              <Text style={{ fontSize: 28 }}>🍡</Text>
-              <Text style={{ fontSize: 12, color: T.sub, marginTop: 6 }}>试试这些（团子会真的去查/去记）</Text>
+            <Card style={{ alignItems: 'center', paddingVertical: 22 }}>
+              <View style={{ width: 52, height: 52, borderRadius: 99, backgroundColor: T.orangeSoft, alignItems: 'center', justifyContent: 'center' }}>
+                <Ic name="sparkle" size={22} color={T.orange} />
+              </View>
+              <Text style={{ fontSize: 12, color: T.sub, marginTop: 10 }}>试试这些（团团会真的去查 / 去记）</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 8 }}>
                 {QUICK.map((t) => (
                   <Pressable key={t} onPress={() => send(t)} style={({ pressed }) => [{ backgroundColor: T.orangeSoft, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 7, margin: 4 }, pressed && { opacity: 0.6 }]}>
@@ -111,7 +120,7 @@ export default function Ask({ toast, prefill, clearPrefill }) {
                   <View>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <PulseDot />
-                      <Text style={{ fontSize: 12, color: T.sub, marginLeft: 8 }}>团子思考中…</Text>
+                      <Text style={{ fontSize: 12, color: T.sub, marginLeft: 8 }}>团团思考中…</Text>
                     </View>
                     <StepLine steps={c.steps} />
                   </View>
@@ -127,7 +136,7 @@ export default function Ask({ toast, prefill, clearPrefill }) {
         </ScrollView>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 2, paddingTop: 8, paddingBottom: 88, borderTopWidth: 0.5, borderTopColor: T.line, backgroundColor: T.bg }}>
-          <TextInput value={q} onChangeText={setQ} placeholder="问点什么，或让团子记点事…" placeholderTextColor={T.sub}
+          <TextInput value={q} onChangeText={setQ} placeholder="问点什么，或让团团记点事…" placeholderTextColor={T.sub}
             onSubmitEditing={() => send()} returnKeyType="send"
             style={{ flex: 1, fontSize: 13.5, color: T.text, backgroundColor: '#fff', borderRadius: 99, paddingHorizontal: 16, paddingVertical: 11, ...T.shadow }} />
           {running ? (

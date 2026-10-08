@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, TextInput, Alert } from 'react-native';
+import { View, Text, TextInput, Alert } from 'react-native';
 import * as FS from 'expo-file-system/legacy';
-import { Card, Section, Row, Divider, Btn, SwitchMIUI, Sheet, InputSheet, MarkdownText } from '../ui';
+import { Card, Section, Row, Divider, Btn, SwitchMIUI } from '../ui';
 import { T } from '../theme';
-import { useStore, setState, DEFAULTS } from '../store';
+import { useStore, setState } from '../store';
 import { exportAll } from '../exporter';
 import { clearMemoryFile } from '../pipeline';
-import { buildMemoryMd, writeMemoryFile } from '../exporter';
-import { getState } from '../store';
 
 export default function Me({ toast, go }) {
   const s = useStore();
@@ -15,12 +13,6 @@ export default function Me({ toast, go }) {
   const [dirty, setDirty] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  const loadFiles = async () => {
-    setShowFiles(true);
-    if (!(s.exportedFiles || []).length && s.settings.exportDir) {
-      try { await exportAll(); } catch (_) {}
-    }
-  };
   const activeCards = s.cards.filter((c) => c.status === 'active');
   const totalMin = Math.round(s.jobs.filter((j) => j.kind === 'audio').reduce((a, j) => a + (j.dur || 0), 0) / 60);
 
@@ -60,7 +52,7 @@ export default function Me({ toast, go }) {
   return (
     <View>
       <View style={{ paddingHorizontal: 2, marginTop: 12 }}>
-        <Text style={{ fontSize: 22, fontWeight: '800', color: T.text }}>我的 ⚙️</Text>
+        <Text style={{ fontSize: 22, fontWeight: '800', color: T.text }}>我的</Text>
       </View>
 
       <Section title="AI 服务配置">
@@ -96,9 +88,9 @@ export default function Me({ toast, go }) {
 
       <Section title="文档固化（手机本地）">
         <Card style={{ paddingHorizontal: 16 }}>
-          <Row icon="📁" iconBg={T.blueSoft} title="文档同步位置" sub={s.settings.exportDir ? '已授权 · 文档/团子/' : '未授权（首次同步时引导授权）'} />
+          <Row icon="folder" iconBg={T.blueSoft} iconColor={T.blue} title="文档同步位置" sub={s.settings.exportDir ? '已授权 · 文档/团子/' : '未授权（首次同步时引导授权）'} />
           <Divider />
-          <Row icon="📤" iconBg={T.orangeSoft} title="立即导出全部" sub={exporting ? '导出中…' : '课程笔记 + 近30条记录（转写/提炼）'}
+          <Row icon="upload" iconBg={T.orangeSoft} title="立即导出全部" sub={exporting ? '导出中…' : '课程笔记 + 近30条记录（转写/提炼）'}
             onPress={async () => {
               if (!s.settings.exportDir) { toast('先选择存储位置'); return; }
               setExporting(true);
@@ -107,11 +99,11 @@ export default function Me({ toast, go }) {
               setExporting(false);
             }} />
           <Divider />
-          <Row icon="📖" iconBg={T.orangeSoft} title="浏览与编辑记忆" sub="画像/课程笔记/档案 · 在「手帐」页操作"
+          <Row icon="book" iconBg={T.orangeSoft} title="浏览与编辑记忆" sub="画像/课程笔记/档案 · 在「手帐」页操作"
             onPress={() => go && go('journal')} />
 
           <Divider />
-          <Row icon="🔁" iconBg={T.greenSoft} title="处理完自动导出" sub="每条记录完成提炼后自动写入文档目录"
+          <Row icon="sync" iconBg={T.greenSoft} iconColor={T.green} title="处理完自动导出" sub="每条记录完成提炼后自动写入文档目录"
             right={<SwitchMIUI on={!!s.settings.exportAuto} onChange={(v) => setState((st) => ({ ...st, settings: { ...st.settings, exportAuto: v } }))} />} />
         </Card>
       </Section>
@@ -119,8 +111,8 @@ export default function Me({ toast, go }) {
 
       <Section title="设备协同（预留）">
         <Card>
-          <Row icon="📡" iconBg="#F2F3F5" title="电脑端 / 心力球设备" sub="接入方案已预留 · 暂未启用" right={
-            <View style={{ backgroundColor: '#F2F3F5', borderRadius: 99, paddingHorizontal: 10, paddingVertical: 4 }}>
+          <Row icon="sliders" iconBg="#F0EDE7" iconColor="#9A948B" title="电脑端 / 心力球设备" sub="接入方案已预留 · 暂未启用" right={
+            <View style={{ backgroundColor: '#F0EDE7', borderRadius: 99, paddingHorizontal: 10, paddingVertical: 4 }}>
               <Text style={{ fontSize: 10, fontWeight: '700', color: T.sub }}>v2</Text>
             </View>
           } />
@@ -129,18 +121,18 @@ export default function Me({ toast, go }) {
 
       <Section title="本地数据">
         <Card style={{ paddingHorizontal: 16 }}>
-          <Row icon="🎧" iconBg={T.purpleSoft} title="录音" sub={audioJobs.length ? `${audioJobs.length} 段 · 存于应用沙盒` : '暂无'} right={<Text style={{ fontSize: 12, color: T.sub }}>{audioJobs.length} 段</Text>} />
+          <Row icon="mic" iconBg={T.purpleSoft} iconColor={T.purple} title="录音" sub={audioJobs.length ? `${audioJobs.length} 段 · 存于应用沙盒` : '暂无'} right={<Text style={{ fontSize: 12, color: T.sub }}>{audioJobs.length} 段</Text>} />
           <Divider />
-          <Row icon="🃏" iconBg={T.orangeSoft} title="复习卡片" sub={`累计生成`} right={<Text style={{ fontSize: 12, color: T.sub }}>{s.cards.length} 张</Text>} />
+          <Row icon="layers" iconBg={T.orangeSoft} title="复习卡片" sub={`累计生成`} right={<Text style={{ fontSize: 12, color: T.sub }}>{s.cards.length} 张</Text>} />
           <Divider />
-          <Row icon="📦" iconBg={T.greenSoft} title="占用空间" sub="音频/照片/文档均为本地存储" right={<Text style={{ fontSize: 12, color: T.sub }}>{totalKB > 1024 ? (totalKB / 1024).toFixed(1) + ' MB' : totalKB.toFixed(0) + ' KB'}</Text>} />
+          <Row icon="box" iconBg={T.greenSoft} iconColor={T.green} title="占用空间" sub="音频/照片/文档均为本地存储" right={<Text style={{ fontSize: 12, color: T.sub }}>{totalKB > 1024 ? (totalKB / 1024).toFixed(1) + ' MB' : totalKB.toFixed(0) + ' KB'}</Text>} />
         </Card>
-        <Btn text="🗑️ 清空全部数据" tone="danger" onPress={clearAll} style={{ marginTop: 14 }} />
+        <Btn text="清空全部数据" tone="danger" onPress={clearAll} style={{ marginTop: 14 }} />
       </Section>
 
       <Section title="关于">
         <Card style={{ paddingHorizontal: 16 }}>
-          <Row icon="🔮" iconBg={T.orangeSoft} title="团子" sub="手机端自操作 Agent · 录音/照片 → ASR/多模态 → 结构化提炼" right={<Text style={{ fontSize: 12, color: T.sub }}>v0.4</Text>} />
+          <Row icon="sparkle" iconBg={T.orangeSoft} title="团子" sub="手机端自操作 Agent · 录音/照片 → ASR/多模态 → 结构化提炼" right={<Text style={{ fontSize: 12, color: T.sub }}>v0.5</Text>} />
         </Card>
       </Section>
     </View>

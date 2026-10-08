@@ -2,6 +2,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, TextInput, Pressable, Animated, Dimensions, Modal, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { T } from './theme';
+import { Ic } from './icons';
 
 export function Card({ children, style }) {
   return <View style={[{ backgroundColor: T.card, borderRadius: T.radius, paddingHorizontal: 16, paddingVertical: 14, marginTop: 10 }, T.shadow, style]}>{children}</View>;
@@ -29,12 +30,12 @@ export function Chip({ text, tone }) {
   </View>;
 }
 
-export function Row({ icon, iconBg, title, sub, right, onPress }) {
+export function Row({ icon, iconBg, iconColor, title, sub, right, onPress }) {
   return (
     <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingVertical: 13 }, pressed && onPress && { opacity: 0.55 }]}>
       {icon ? (
-        <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: iconBg || T.orangeSoft, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-          <Text style={{ fontSize: 16 }}>{icon}</Text>
+        <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: iconBg || T.orangeSoft, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+          {typeof icon === 'string' ? <Ic name={icon} size={18} color={iconColor || T.orangeDeep} /> : icon}
         </View>
       ) : null}
       <View style={{ flex: 1 }}>
@@ -42,7 +43,7 @@ export function Row({ icon, iconBg, title, sub, right, onPress }) {
         {sub ? <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 2 }}>{sub}</Text> : null}
       </View>
       {right}
-      {onPress ? <Text style={{ fontSize: 16, color: '#C6CBD2', marginLeft: 6 }}>›</Text> : null}
+      {onPress ? <Ic name="chevR" size={16} color="#C6BFB4" /> : null}
     </Pressable>
   );
 }
@@ -174,8 +175,9 @@ export function ActionSheet({ visible, onClose, title, options }) {
           {title ? <Text style={{ textAlign: 'center', fontSize: 12.5, color: T.sub, paddingVertical: 8, paddingHorizontal: 20 }} numberOfLines={2}>{title}</Text> : null}
           {options.filter(Boolean).map((o) => (
             <Pressable key={o.label} onPress={() => { onClose(); setTimeout(o.onPress, 180); }}
-              style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 15, marginHorizontal: 14, marginTop: 6, borderRadius: 14, backgroundColor: o.tone === 'danger' ? T.redSoft : '#F7F8FA' }, pressed && { opacity: 0.55 }] }>
-              <Text style={{ fontSize: 14.5, fontWeight: '600', color: o.tone === 'danger' ? T.red : T.text }}>{o.icon ? o.icon + '  ' : ''}{o.label}</Text>
+              style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 15, marginHorizontal: 14, marginTop: 6, borderRadius: 14, backgroundColor: o.tone === 'danger' ? T.redSoft : '#F5F2ED' }, pressed && { opacity: 0.55 }] }>
+              {o.icon ? <View style={{ marginRight: 8 }}>{typeof o.icon === 'string' ? <Ic name={o.icon} size={17} color={o.tone === 'danger' ? T.red : T.orangeDeep} /> : o.icon}</View> : null}
+              <Text style={{ fontSize: 14.5, fontWeight: '600', color: o.tone === 'danger' ? T.red : T.text }}>{o.label}</Text>
             </Pressable>
           ))}
           <Pressable onPress={onClose} style={({ pressed }) => [{ paddingVertical: 14, alignItems: 'center', marginTop: 6 }, pressed && { opacity: 0.5 }]}>
@@ -204,18 +206,28 @@ export function InputSheet({ visible, onClose, title, initial, placeholder, mult
   );
 }
 export function TabBar({ tabs, active, onChange, fabGap }) {
-  const n = tabs.length;
+  /* fabGap：偶数 Tab 中间留出 FAB 泊位，避免中央录音键压住两侧 Tab */
+  const useGap = fabGap && tabs.length % 2 === 0;
+  const half = useGap ? tabs.length / 2 : tabs.length;
+  const tab = (t) => {
+    const on = active === t.key;
+    return (
+      <Pressable key={t.key} onPress={() => onChange(t.key)} style={{ flex: 1, alignItems: 'center', paddingVertical: 3 }}>
+        <Ic name={t.icon} size={23} color={on ? T.orange : '#B3ACA1'} stroke={on ? 1.9 : 1.7} />
+        <Text style={{ fontSize: 10.5, fontWeight: '600', color: on ? T.orange : T.sub, marginTop: 3 }}>{t.label}</Text>
+      </Pressable>
+    );
+  };
   return (
     <View style={{
-      position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,.96)',
-      borderTopWidth: 0.5, borderTopColor: T.line, flexDirection: 'row', paddingTop: 7, paddingBottom: 18,
+      position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,.97)',
+      borderTopWidth: 0.5, borderTopColor: T.line, paddingTop: 8, paddingBottom: 16,
     }}>
-      {tabs.map((t, i) => (
-        <Pressable key={t.key} onPress={() => onChange(t.key)} style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={{ fontSize: 20, opacity: active === t.key ? 1 : 0.45, marginBottom: 2 }}>{t.icon}</Text>
-          <Text style={{ fontSize: 10.5, fontWeight: '600', color: active === t.key ? T.orange : T.sub }}>{t.label}</Text>
-        </Pressable>
-      ))}
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {tabs.slice(0, half).map(tab)}
+        {useGap ? <View style={{ width: 96 }} /> : null}
+        {tabs.slice(half).map(tab)}
+      </View>
     </View>
   );
 }

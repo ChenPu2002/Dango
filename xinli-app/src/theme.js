@@ -1,21 +1,21 @@
-/* MIUI / HyperOS 风格设计令牌 */
+/* 团子设计令牌 · 「纸感手帐」：暖纸底 / 墨色文字 / 柿色主色 */
 export const T = {
-  bg: '#F5F6F8',        // 页面浅灰
+  bg: '#F6F4F0',        // 暖纸底
   card: '#FFFFFF',
-  text: '#1A1A1A',      // MIUI 主黑
-  text2: '#3D3D3D',
-  sub: '#8A9099',       // 次级灰
-  line: '#F0F1F3',
-  orange: '#FF6900',    // 小米橙（主色）
-  orangeDeep: '#F05A00',
-  orangeSoft: '#FFF1E7',
-  green: '#2FA47A', greenSoft: '#E6F6EF',
-  red: '#F04C3C', redSoft: '#FDECEA',
-  blue: '#3E8BFF', blueSoft: '#EAF2FF',
-  purple: '#7C6FF0', purpleSoft: '#EEEBFD',
-  radius: 16,
+  text: '#26221E',      // 暖墨
+  text2: '#4A443D',
+  sub: '#9A948B',       // 暖灰
+  line: '#EDE9E2',
+  orange: '#E5622E',    // 柿色（主色）
+  orangeDeep: '#C94F1F',
+  orangeSoft: '#FBEDE3',
+  green: '#3E9B71', greenSoft: '#E9F4EE',
+  red: '#E05447', redSoft: '#FBEAE7',
+  blue: '#4A86C8', blueSoft: '#EAF1F8',
+  purple: '#8A7DB8', purpleSoft: '#EFECF6',
+  radius: 18,
   shadow: {
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
+    shadowColor: '#5A3C1E', shadowOpacity: 0.06, shadowRadius: 9, shadowOffset: { width: 0, height: 3 },
     elevation: 1,
   },
 };

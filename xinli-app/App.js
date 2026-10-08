@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SafeAreaView, ScrollView, View, Text, StatusBar, Platform, Pressable, Animated } from 'react-native';
 import { T } from './src/theme';
+import { Ic } from './src/icons';
 import { Card, TabBar, Toast, ActionSheet } from './src/ui';
 import { initStore, useStore } from './src/store';
 import { runArchivist } from './src/pipeline';
@@ -11,10 +12,10 @@ import Ask from './src/screens/Ask';
 import Me from './src/screens/Me';
 
 const TABS = [
-  { key: 'today', icon: '🏠', label: '今日' },
-  { key: 'journal', icon: '📖', label: '手帐' },
-  { key: 'ask', icon: '💬', label: '对话' },
-  { key: 'me', icon: '⚙️', label: '我的' },
+  { key: 'today', icon: 'home', label: '今日' },
+  { key: 'journal', icon: 'book', label: '手帐' },
+  { key: 'ask', icon: 'chat', label: '对话' },
+  { key: 'me', icon: 'user', label: '我的' },
 ];
 
 export default function App() {
@@ -52,8 +53,9 @@ export default function App() {
   if (!ready) {
     return (
       <View style={{ flex: 1, backgroundColor: T.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 40 }}>🍡</Text>
-        <Text style={{ fontSize: 14, color: T.sub, marginTop: 12 }}>团子启动中…</Text>
+        <Ic name="sparkle" size={34} color={T.orange} />
+        <Text style={{ fontSize: 15, fontWeight: '800', color: T.text, marginTop: 14, letterSpacing: 2 }}>团 子</Text>
+        <Text style={{ fontSize: 11, color: T.sub, marginTop: 6 }}>记忆整理中…</Text>
       </View>
     );
   }
@@ -91,19 +93,19 @@ export default function App() {
                 {
                   width: 62, height: 62, borderRadius: 99, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: io.rec.on ? T.red : T.orange,
-                  shadowColor: io.rec.on ? T.red : '#F97C1F', shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 6,
+                  shadowColor: io.rec.on ? T.red : T.orange, shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 6,
                   borderWidth: 4, borderColor: '#fff',
                 }, pressed && { opacity: 0.8 },
               ]}>
-              <Text style={{ fontSize: 24, color: '#fff' }}>{io.rec.on ? '⏹' : '⏺'}</Text>
+              <Ic name={io.rec.on ? 'stop' : 'mic'} size={26} color="#fff" stroke={2} />
             </Pressable>
           </Animated.View>
           {io.rec.on ? (
-            <Pressable onPress={io.discard} style={{ position: 'absolute', right: 60, top: 16, backgroundColor: T.redSoft, borderWidth: 1.5, borderColor: '#F5B8B0', borderRadius: 99, paddingHorizontal: 14, paddingVertical: 8 }}>
+            <Pressable onPress={io.discard} style={{ position: 'absolute', right: 60, top: 16, backgroundColor: T.redSoft, borderWidth: 1.5, borderColor: '#F0C4BE', borderRadius: 99, paddingHorizontal: 14, paddingVertical: 8 }}>
               <Text style={{ fontSize: 12, color: T.red, fontWeight: '700' }}>丢弃 {mmss(io.rec.sec)}</Text>
             </Pressable>
           ) : (
-            <Text style={{ fontSize: 9.5, color: '#fff', marginTop: -8, backgroundColor: 'rgba(0,0,0,.25)', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 }}>录音 · 长按更多</Text>
+            <Text style={{ fontSize: 9.5, color: '#8B8378', marginTop: 2, backgroundColor: 'rgba(255,255,255,.9)', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 }}>长按更多</Text>
           )}
         </View>
 
@@ -111,9 +113,9 @@ export default function App() {
           visible={fabMenu} onClose={() => setFabMenu(false)}
           title="除了录音，还可以"
           options={[
-            { icon: '📷', label: '拍照（板书/PPT）', onPress: () => io.takePhoto() },
-            { icon: '🖼️', label: '从相册选择', onPress: () => io.pickPhoto() },
-            { icon: '📄', label: '文档（txt/md）', onPress: () => io.pickDoc() },
+            { icon: 'camera', label: '拍照（板书/PPT）', onPress: () => io.takePhoto() },
+            { icon: 'image', label: '从相册选择', onPress: () => io.pickPhoto() },
+            { icon: 'doc', label: '文档（txt/md）', onPress: () => io.pickDoc() },
           ]}
         />
         <Toast msg={toastMsg} />

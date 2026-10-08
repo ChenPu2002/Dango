@@ -40,7 +40,7 @@ export function useRecorder(toast) {
       setRec({ on: false, sec: 0 });
       if (!uri) { toast('未生成录音文件'); return; }
       await addAudioJob(uri, dur);
-      toast('已录入 · 转写+提炼自动进行 🍡');
+      toast('已录入 · 转写+提炼自动进行');
     } catch (e) { setRec({ on: false, sec: 0 }); toast('停止失败: ' + String((e && e.message) || e).slice(0, 50)); }
   };
 
@@ -53,18 +53,18 @@ export function useRecorder(toast) {
 
   const takePhoto = async () => {
     const r = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-    if (!r.canceled && r.assets[0]) { await addPhotoJob(r.assets[0].uri, r.assets[0].fileSize || 0); toast('照片已加入提炼 🍡'); }
+    if (!r.canceled && r.assets[0]) { await addPhotoJob(r.assets[0].uri, r.assets[0].fileSize || 0); toast('照片已加入提炼'); }
   };
   const pickPhoto = async () => {
     const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
-    if (!r.canceled && r.assets[0]) { await addPhotoJob(r.assets[0].uri, r.assets[0].fileSize || 0); toast('照片已加入提炼 🍡'); }
+    if (!r.canceled && r.assets[0]) { await addPhotoJob(r.assets[0].uri, r.assets[0].fileSize || 0); toast('照片已加入提炼'); }
   };
   const pickDoc = async () => {
     const r = await DocumentPicker.getDocumentAsync({ type: ['text/plain', 'text/markdown', 'text/*'] });
     if (!r.canceled && r.assets && r.assets[0]) {
       const a = r.assets[0];
       if (!/\.(txt|md|markdown|csv)$/i.test(a.name || '')) { toast('文档暂支持 txt / md'); return; }
-      await addDocJob(a.uri, a.name, a.size || 0); toast('文档已加入提炼 🍡');
+      await addDocJob(a.uri, a.name, a.size || 0); toast('文档已加入提炼');
     }
   };
 

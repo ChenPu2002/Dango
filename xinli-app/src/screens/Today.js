@@ -3,11 +3,12 @@ import { View, Text, Pressable, TextInput, Modal, ScrollView, Dimensions } from 
 import * as Audio from 'expo-audio';
 import Svg, { Path } from 'react-native-svg';
 import { Card, Section, Chip, ActionSheet, InputSheet, PulseDot, MarkdownText } from '../ui';
+import { Ic } from '../icons';
 import { T } from '../theme';
 import { useStore, setState, getState, uid, fmtTime, fmtDate } from '../store';
-import { deleteJob, editTodo, deleteTodo, toggleTodo } from '../pipeline';
+import { deleteJob, editTodo, deleteTodo, toggleTodo, retryJob } from '../pipeline';
 
-const KIND = { audio: { icon: '🎧' }, photo: { icon: '📷' }, doc: { icon: '📄' } };
+const KIND = { audio: { icon: 'mic' }, photo: { icon: 'camera' }, doc: { icon: 'doc' } };
 
 function PlayBtn({ uri }) {
   const player = Audio.useAudioPlayer({ uri });
@@ -15,8 +16,8 @@ function PlayBtn({ uri }) {
   return (
     <Pressable onPress={() => { playing ? player.pause() : player.play(); setPlaying(!playing); }}
       style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-      <View style={{ width: 30, height: 30, borderRadius: 99, backgroundColor: T.orange, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: '#fff', fontSize: 11 }}>{playing ? '⏸' : '▶'}</Text>
+      <View style={{ width: 30, height: 30, borderRadius: 99, backgroundColor: T.orangeSoft, alignItems: 'center', justifyContent: 'center' }}>
+        <Ic name={playing ? 'pause' : 'play'} size={13} color={T.orangeDeep} />
       </View>
       <Text style={{ fontSize: 11.5, color: T.orangeDeep, marginLeft: 8, fontWeight: '700' }}>{playing ? '暂停' : '播放原声'}</Text>
     </Pressable>
@@ -36,13 +37,25 @@ function Entry({ j, onMenu }) {
         <Card>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text style={{ fontSize: 11, color: T.sub, marginRight: 8 }}>{fmtTime(j.createdAt)}</Text>
-            <Text style={{ flex: 1, fontSize: 14.5, fontWeight: '700', color: T.text }} numberOfLines={1}>
-              {KIND[j.kind].icon} {ex ? (ex.title || j.title) : j.title}
+            <Ic name={KIND[j.kind].icon} size={15} color={T.orangeDeep} />
+            <Text style={{ flex: 1, fontSize: 14.5, fontWeight: '700', color: T.text, marginLeft: 7 }} numberOfLines={1}>
+              {ex ? (ex.title || j.title) : j.title}
             </Text>
-            <Text style={{ fontSize: 11, color: T.sub, transform: [{ rotate: open ? '180deg' : '0deg' }] }}>▾</Text>
+            <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}>
+              <Ic name="chevD" size={15} color="#C6BFB4" />
+            </View>
           </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            {processing ? <Chip text={j.statusText} tone="p" /> : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            {processing ? (
+              <>
+                <Chip text={j.error ? '失败：' + String(j.error).slice(0, 18) : j.statusText} tone={j.status === 'error' ? 'r' : 'p'} />
+                {(j.status === 'error' || Date.now() - j.createdAt > 10 * 60000) ? (
+                  <Pressable onPress={() => retryJob(j.id)} style={{ backgroundColor: T.orangeSoft, borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3, marginLeft: 6, marginTop: 6 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: T.orangeDeep }}>重试</Text>
+                  </Pressable>
+                ) : null}
+              </>
+            ) : (
               <>
                 {ex && ex.cards ? <Chip text={`卡片 ${ex.cards.length} 张`} /> : null}
                 {ex && ex.todos && ex.todos.length ? <Chip text={`待办 ${ex.todos.length} 条`} tone="p" /> : null}
@@ -90,7 +103,7 @@ function TodayTodos({ toast }) {
   return (
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Text style={{ fontSize: 15, fontWeight: '800', color: T.text, flex: 1 }}>✅ 今日待办</Text>
+        <Text style={{ fontSize: 15, fontWeight: '800', color: T.text, flex: 1 }}>今日待办</Text>
         <Text style={{ fontSize: 11, color: T.sub }}>{todos.length} 件待做{doneToday.length ? ` · ${doneToday.length} 件已完成` : ''}</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
@@ -105,17 +118,15 @@ function TodayTodos({ toast }) {
         {todos.slice(0, 6).map((t) => (
           <Pressable key={t.id} onPress={() => toggleTodo(t.id)} onLongPress={() => setMenu({ todo: t })} delayLongPress={350}
             style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9 }}>
-            <View style={{ width: 19, height: 19, borderRadius: 6, borderWidth: 1.5, borderColor: T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-              <Text style={{ fontSize: 11, color: T.orange }}>○</Text>
-            </View>
+            <View style={{ width: 20, height: 20, borderRadius: 7, borderWidth: 1.6, borderColor: T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }} />
             <Text style={{ flex: 1, fontSize: 13.5, color: T.text }}>{t.text}</Text>
             {t.due ? <Text style={{ fontSize: 10, color: T.red }}>{t.due}</Text> : null}
           </Pressable>
         ))}
         {doneToday.slice(0, 3).map((t) => (
           <Pressable key={t.id} onPress={() => toggleTodo(t.id)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, opacity: 0.55 }}>
-            <View style={{ width: 19, height: 19, borderRadius: 6, backgroundColor: T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-              <Text style={{ fontSize: 11, color: '#fff' }}>✓</Text>
+            <View style={{ width: 20, height: 20, borderRadius: 7, backgroundColor: T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+              <Ic name="check" size={11} color="#fff" stroke={2.8} />
             </View>
             <Text style={{ flex: 1, fontSize: 13, color: T.sub, textDecorationLine: 'line-through' }}>{t.text}</Text>
           </Pressable>
@@ -124,8 +135,8 @@ function TodayTodos({ toast }) {
       </View>
       <ActionSheet visible={!!menu} onClose={() => setMenu(null)} title={menu ? menu.todo.text : ''}
         options={menu ? [
-          { icon: '✏️', label: '编辑', onPress: () => setEdit({ todo: menu.todo }) },
-          { icon: '🗑️', label: '删除', tone: 'danger', onPress: () => { deleteTodo(menu.todo.id); toast('已删除'); } },
+          { icon: 'pencil', label: '编辑', onPress: () => setEdit({ todo: menu.todo }) },
+          { icon: 'trash', label: '删除', tone: 'danger', onPress: () => { deleteTodo(menu.todo.id); toast('已删除'); } },
         ] : []} />
       <InputSheet visible={!!edit} onClose={() => setEdit(null)} title="编辑待办" initial={edit ? edit.todo.text : ''}
         onSubmit={(v) => { if (edit && v.trim()) { editTodo(edit.todo.id, v.trim()); toast('已更新'); } }} />
@@ -219,7 +230,7 @@ export default function Today({ toast, goAsk, goJournal }) {
       <View style={{ paddingHorizontal: 2, marginTop: 10 }}>
         <Text style={{ fontSize: 20, fontWeight: '800', color: T.text }}>{fmtDate(Date.now())} · 今天</Text>
         <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 2 }}>
-          {doneJobs.length}/{todayJobs.length} 条记录 · 待办 {s.todos.filter((t) => !t.done && !t.archived).length} 件 · 卡片 {s.cards.filter((c) => c.status === 'active' && new Date(c.createdAt).toDateString() === new Date().toDateString()).length} 张
+          {doneJobs.length}/{todayJobs.length} 条记录 · 待办 {s.todos.filter((t) => !t.done && !t.archived && (!t.visibleFrom || new Date(t.visibleFrom) <= new Date())).length} 件 · 卡片 {s.cards.filter((c) => c.status === 'active' && new Date(c.createdAt).toDateString() === new Date().toDateString()).length} 张
         </Text>
       </View>
 
@@ -235,7 +246,7 @@ export default function Today({ toast, goAsk, goJournal }) {
           <Card style={{ paddingVertical: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={{ fontSize: 24, fontWeight: '900', color: st.color, letterSpacing: 0.5 }}>{st.en}</Text>
-              <Text style={{ fontSize: 12, color: T.sub, marginLeft: 8 }}>{st.zh}</Text>
+              <Text style={{ fontSize: 12, color: T.sub, marginLeft: 8 }}>{st.zh}{new Date(latestMood.createdAt).toDateString() === new Date().toDateString() ? '' : ` · ${fmtDate(latestMood.createdAt)}`}</Text>
               <Text style={{ fontSize: 14, marginLeft: 6 }}>{latestMood.emoji}</Text>
               <View style={{ flex: 1 }} />
               {(latestMood.tags || []).slice(0, 2).map((t) => (
@@ -256,33 +267,41 @@ export default function Today({ toast, goAsk, goJournal }) {
       <TodayCards />
 
       {todayDigest ? (
-        <Card style={{ backgroundColor: '#FFF6EF', borderWidth: 0, paddingVertical: 10 }}>
-          <Text style={{ fontSize: 11.5, color: '#8A5570', lineHeight: 17 }}>📝 今日小结：{todayDigest.summary}</Text>
+        <Card style={{ backgroundColor: '#FBF2E9', borderWidth: 0, paddingVertical: 12 }}>
+          <Text style={{ fontSize: 10, color: T.orangeDeep, fontWeight: '800', letterSpacing: 1 }}>今日小结</Text>
+          <Text style={{ fontSize: 12, color: '#7A5A45', lineHeight: 18, marginTop: 3 }}>{todayDigest.summary}</Text>
         </Card>
       ) : null}
 
-      <Section title="今日记录" right={s.jobs.length ? `${s.jobs.length} 条` : ''}>
-        {s.jobs.length ? (
+      <Section title="今日记录" right={todayJobs.length ? `今日 ${todayJobs.length} 条` : ''}>
+        {todayJobs.length ? (
           <View style={{ marginTop: 4 }}>
-            {s.jobs.slice(0, 8).map((j) => <Entry key={j.id} j={j} onMenu={setMenu} />)}
-            {s.jobs.length > 8 ? (
+            {todayJobs.slice(0, 8).map((j) => <Entry key={j.id} j={j} onMenu={setMenu} />)}
+            {todayJobs.length > 8 ? (
               <Pressable onPress={goJournal} style={{ alignSelf: 'center', padding: 8 }}>
                 <Text style={{ fontSize: 12, color: T.orangeDeep, fontWeight: '700' }}>更多历史 → 手帐</Text>
               </Pressable>
             ) : null}
           </View>
         ) : (
-          <Card style={{ alignItems: 'center', paddingVertical: 22 }}>
-            <Text style={{ fontSize: 28 }}>⏺</Text>
-            <Text style={{ fontSize: 12.5, color: T.sub, marginTop: 8, lineHeight: 20 }}>点下方录音键开始第一条记录{'\n'}说到的任务和知识点会自动整理</Text>
+          <Card style={{ alignItems: 'center', paddingVertical: 26 }}>
+            <View style={{ width: 56, height: 56, borderRadius: 99, backgroundColor: T.orangeSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <Ic name="mic" size={24} color={T.orangeDeep} />
+            </View>
+            <Text style={{ fontSize: 12.5, color: T.sub, marginTop: 12, lineHeight: 20 }}>点下方录音键开始第一条记录{'\n'}说到的任务和知识点会自动整理</Text>
+            {s.jobs.length ? (
+              <Pressable onPress={goJournal} style={({ pressed }) => [{ marginTop: 12, backgroundColor: T.orangeSoft, borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8 }, pressed && { opacity: 0.6 }]}>
+                <Text style={{ fontSize: 11.5, fontWeight: '700', color: T.orangeDeep }}>更早的 {s.jobs.length} 条记录已沉入手帐 ›</Text>
+              </Pressable>
+            ) : null}
           </Card>
         )}
       </Section>
 
       <ActionSheet visible={!!menu} onClose={() => setMenu(null)} title={menu ? menu.job.title : ''}
         options={menu ? [
-          { icon: '🗑️', label: '删除本条记录', tone: 'danger', onPress: async () => { await deleteJob(menu.job.id); toast('已删除'); } },
-          { icon: '🧹', label: '删除记录及其产物', tone: 'danger', onPress: async () => { await deleteJob(menu.job.id, true); toast('已删除记录及产物'); } },
+          { icon: 'trash', label: '删除本条记录', tone: 'danger', onPress: async () => { await deleteJob(menu.job.id); toast('已删除'); } },
+          { icon: 'trash', label: '删除记录及其产物', tone: 'danger', onPress: async () => { await deleteJob(menu.job.id, true); toast('已删除记录及产物'); } },
         ] : []} />
     </View>
   );

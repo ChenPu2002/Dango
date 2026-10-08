@@ -7,12 +7,13 @@ import { writeMemoryFile } from './exporter';
 
 /* ---------- 工具目录（JSON Schema）---------- */
 export const TOOLS = [
-  { type: 'function', function: { name: 'search_memory', description: '关键词检索全部记忆（转写/笔记/日结/待办），返回命中列表', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词' }, scope: { type: 'string', enum: ['all', 'transcripts', 'notes', 'todos', 'dailies'] } }, required: ['query'] } } },
+  { type: 'function', function: { name: 'search_memory', description: '关键词检索全部记忆（转写/笔记/日结/待办/卡片），返回命中列表', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词' }, scope: { type: 'string', enum: ['all', 'transcripts', 'notes', 'todos', 'dailies'] } }, required: ['query'] } } },
   { type: 'function', function: { name: 'read_transcript', description: '读取指定记录的完整转写原文', parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } } },
   { type: 'function', function: { name: 'list_records', description: '枚举最近的记录（含标题/时间/摘要）', parameters: { type: 'object', properties: { days: { type: 'number', description: '最近N天，默认7' } } } } },
   { type: 'function', function: { name: 'read_course_note', description: '读取某课程完整笔记', parameters: { type: 'object', properties: { course: { type: 'string' } }, required: ['course'] } } },
   { type: 'function', function: { name: 'get_todos', description: '获取待办（可只看待完成）', parameters: { type: 'object', properties: { pending_only: { type: 'boolean' } } } } },
   { type: 'function', function: { name: 'get_dailies', description: '获取每日小结列表' } },
+  { type: 'function', function: { name: 'get_moods', description: '获取最近的心情记录（emoji/分数/标签/时刻），回答心情相关问题用', parameters: { type: 'object', properties: { n: { type: 'number', description: '最近N条，默认7' } } } } },
   { type: 'function', function: { name: 'add_todo', description: '添加一条待办（用户口头交办时用）', parameters: { type: 'object', properties: { text: { type: 'string' }, due: { type: 'string', description: '截止，可空' } }, required: ['text'] } } },
   { type: 'function', function: { name: 'complete_todo', description: '按内容模糊匹配并完成一条待办', parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } } },
   { type: 'function', function: { name: 'update_profile', description: '更新用户画像（滚动重写后的完整新画像，≤120字）', parameters: { type: 'object', properties: { full: { type: 'string' } }, required: ['full'] } } },
@@ -29,7 +30,7 @@ ${notes}
 【最近日结】${dls}`;
 }
 
-const AGENT_SYS = `你是「团子」，用户手机里的私人记忆助理。用户主要是大学生，用她们的录音/照片/文档构建了记忆库。
+const AGENT_SYS = `你是「团团」，「团子」App 里用户手机上的私人记忆助理。用户主要是大学生，用她们的录音/照片/文档构建了记忆库。
 规则：
 1. 先用工具查证，再回答；记忆里没有就明说，禁止编造；
 2. 回答引用来源，格式如〔10.7 高数录音〕；
@@ -66,6 +67,7 @@ export function executeTool(name, args) {
       });
       (st.dailies || []).forEach((d) => { if ((d.summary || '').includes(q)) hits.push({ type: 'daily', date: d.date, snippet: snippet(d.summary, q, 100) }); });
       (st.todos || []).forEach((t) => { if (t.text.includes(q)) hits.push({ type: 'todo', text: t.text, done: t.done }); });
+      (st.cards || []).forEach((c) => { if (String(c.q).includes(q) || String(c.a || '').includes(q)) hits.push({ type: 'card', q: c.q, snippet: snippet(c.a, q, 80), status: c.status || 'active' }); });
       return { query: q, total: hits.length, hits: hits.slice(0, 8) };
     }
     case 'read_transcript': {
@@ -91,10 +93,15 @@ export function executeTool(name, args) {
     }
     case 'get_dailies':
       return (st.dailies || []).slice(0, 7).map((d) => ({ date: d.date, emoji: d.emoji, summary: d.summary }));
+    case 'get_moods':
+      return (st.moods || []).slice(0, A.n || 7).map((m) => {
+        const d = new Date(m.createdAt);
+        return { date: `${d.getMonth() + 1}.${d.getDate()}`, emoji: m.emoji, score: m.score || 3, tags: m.tags || [], moment: (m.moments && m.moments[0] && m.moments[0].text) || '' };
+      });
     case 'add_todo': {
       const text = String(A.text || '').trim();
       if (!text) return { error: 'text 为空' };
-      const t = { id: uid(), text, due: String(A.due || ''), from: '团子(对话)', done: false, archived: false, createdAt: Date.now(), visibleFrom: todayStr() };
+      const t = { id: uid(), text, due: String(A.due || ''), from: '团团(对话)', done: false, archived: false, createdAt: Date.now(), visibleFrom: todayStr() };
       setState((s2) => ({ ...s2, todos: [t, ...s2.todos] }));
       return { ok: true, added: text };
     }
@@ -160,7 +167,7 @@ export async function runAgent(question, { onStep, cancelled } = {}) {
     const fin = await llmChatRaw(messages, null, 800);
     return { answer: (fin.choices[0].message.content) || '（空回答）', steps, actions };
   } catch (e) {
-    return { answer: `⚠️ ${String((e && e.message) || e)}`, steps, actions, error: true };
+    return { answer: `出错了：${String((e && e.message) || e)}`, steps, actions, error: true };
   }
 }
 
@@ -173,10 +180,11 @@ function briefOf(name, args, result) {
       case 'read_course_note': return `读取课程笔记「${(result && result.course) || args.course}」`;
       case 'get_todos': return '查看待办';
       case 'get_dailies': return '查看日结';
-      case 'add_todo': return `➕ 已添加待办「${args.text}」`;
-      case 'complete_todo': return `✅ 已完成「${(result && result.completed) || args.text}」`;
-      case 'update_profile': return '✏️ 已更新画像';
-      case 'update_course_note': return `✏️ 已更新「${args.course}」笔记`;
+      case 'get_moods': return '查看心情记录';
+      case 'add_todo': return `已添加待办「${args.text}」`;
+      case 'complete_todo': return `已完成「${(result && result.completed) || args.text}」`;
+      case 'update_profile': return '已更新画像';
+      case 'update_course_note': return `已更新「${args.course}」笔记`;
       default: return name;
     }
   } catch (_) { return name; }

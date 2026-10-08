@@ -16,8 +16,9 @@ export function deriveDirUri(root) {
   return `${root}/document/${docPath}`;
 }
 
-/* 确保目录可用：无授权则弹一次系统授权（固定 Documents），已有则直接推导 */
-export async function ensureExportDir() {
+/* 确保目录可用：已授权则直接推导；未授权时仅 ask=true（用户手势链路）才弹系统授权
+ * —— 后台路径（启动归档/自动同步）绝不能弹系统窗，静默跳过等用户下次手动同步 */
+export async function ensureExportDir({ ask } = {}) {
   const st = getState();
   let root = st.settings.exportRoot;
   /* 迁移：旧 exportDir 里提取 tree 部分（保留已授予的权限，并回归正牌 团子 目录） */
@@ -25,6 +26,7 @@ export async function ensureExportDir() {
     root = st.settings.exportDir.split('/document/')[0];
   }
   if (!root) {
+    if (!ask) return null; /* 无授权且非用户手势：静默跳过，不弹系统授权窗 */
     const perm = await SAF.requestDirectoryPermissionsAsync(SAF.getUriForDirectoryInRoot('Documents'));
     if (!perm.granted) return null;
     root = perm.directoryUri.split('/document/')[0];
@@ -33,22 +35,30 @@ export async function ensureExportDir() {
     setState((s) => ({ ...s, settings: { ...s.settings, exportRoot: root } }));
   }
   const dirUri = deriveDirUri(root);
-  /* 首次使用：目录不存在则创建（writeSafe 会在写入时自动建） */
+  /* 确保 团子 子目录存在（SAF 不自动创建父目录；已存在时 makeDirectoryAsync 会抛错，忽略即可） */
+  const parentUri = `${root}/document/${encodeURIComponent('primary:Documents')}`;
+  try { await SAF.makeDirectoryAsync(parentUri, FOLDER); } catch (_) {}
   setState((s) => ({ ...s, settings: { ...s.settings, exportDir: dirUri } }));
   return dirUri;
 }
 
-/* 覆盖式写入：已有文件直接更新（不产生 (1) 副本），不存在则创建 */
+/* 覆盖式写入：已有文件直接更新（不产生 (1) 副本），不存在则创建；
+ * 写后回读校验——个别机型（OPPO/ColorOS）的 DocumentsProvider 会"假成功"，必须确认落盘 */
 async function writeSafe(dirUri, fileName, content, mime) {
   const ext = (fileName.match(/\.\w+$/) || ['.txt'])[0];
   const m = mime || MIME[ext] || 'text/plain';
   const fileUri = `${dirUri}%2F${encodeURIComponent(fileName)}`;
+  let wrote = false;
   try {
     await FS.writeAsStringAsync(fileUri, content, { encoding: FS.EncodingType.UTF8 });
-  } catch (_) {
+    wrote = true;
+  } catch (_) {}
+  if (!wrote) {
     const nu = await SAF.createFileAsync(dirUri, fileName, m);
     await FS.writeAsStringAsync(nu, content, { encoding: FS.EncodingType.UTF8 });
   }
+  const back = await FS.readAsStringAsync(fileUri, { encoding: FS.EncodingType.UTF8 }).catch(() => null);
+  if (back !== content) throw new Error(`写入未生效: ${fileName}`);
   /* 记录到已导出清单（同名去重，保留最新时间） */
   setState((st) => {
     const rest = (st.exportedFiles || []).filter((f) => f.name !== fileName);
@@ -119,9 +129,9 @@ export async function exportJob(j) {
   }
 }
 
-/* 全量导出：记忆文件 + 近30条记录 */
+/* 全量导出：记忆文件 + 近30条记录（用户手势触发，可弹授权） */
 export async function exportAll() {
-  const dir = await ensureExportDir();
+  const dir = await ensureExportDir({ ask: true });
   if (!dir) throw new Error('未授权文档目录');
   let n = 0;
   await writeSafe(dir, MEMORY_FILE, buildMemoryMd(getState())); n++;

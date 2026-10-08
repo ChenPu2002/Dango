@@ -30,7 +30,7 @@ export async function llmChatRaw(messages, tools, maxTokens = 1500) {
   return j;
 }
 
-export const EXTRACT_SYS = `你是「团子」手机端学习助理，把用户给的课堂/生活材料提炼成结构化数据。只输出 JSON，不要输出任何其他文字，格式：
+export const EXTRACT_SYS = `你是「团团」——「团子」App 的手机端学习助理，把用户给的课堂/生活材料提炼成结构化数据。只输出 JSON，不要输出任何其他文字，格式：
 {"title":"3-8字标题","summary":"2-3句摘要","outline":["提纲要点"],"keywords":["关键词"],"points":["关键细节/公式/任务"],"cards":[{"q":"复习问题","a":"答案","kind":"knowledge"}],"funs":[{"text":"材料中有趣的见闻/冷知识/彩蛋(1条以内，无则空)"}],"todos":[{"text":"待办事项","due":"截止时间(可空)"}],"mood":{"emoji":"😌","tags":["#标签"],"moments":[{"t":"HH:MM","text":"高光或低谷时刻描述"}],"score":3}}
 规则：
 1. cards 只允许学科知识类（概念/公式/定义/考点/方法），默认 kind=knowledge；日常安排、约会、购物、心情、追星娱乐等生活内容严禁进 cards——有趣的见闻放 funs，任务放 todos，情绪放 mood；
@@ -45,7 +45,7 @@ export function parseExtractJson(s) {
 }
 
 /* 合并引擎：让记忆“演化而非堆叠” */
-export const MERGE_SYS = `你是「团子」的记忆合并引擎。输入：新材料提取结果 + 现有记忆清单。你的职责是对现有记忆发出操作指令，实现演化而非堆叠。
+export const MERGE_SYS = `你是「团团」——「团子」App 的记忆合并引擎。输入：新材料提取结果 + 现有记忆清单。你的职责是对现有记忆发出操作指令，实现演化而非堆叠。
 
 只输出 JSON 操作指令，不要任何其他文字：
 {"cards":{"add":[{"q":"","a":"","topic":"课程名·主题","kind":"knowledge|fun"}],"update":[{"id":"","a":"新答案","reason":"订正|补充"}],"archive":["id"]},"funs":{"add":[{"text":"有趣的事"}]},
@@ -108,44 +108,4 @@ export async function asrRecognize(base64Audio, { format = 'm4a', codec = 'aac',
 }
 
 /* ---------- 每日小结 ---------- */
-export const DAILY_SYS = `你是「团子」的每日整理器。把当天所有记录的标题与摘要压缩成一句话日结。只输出 JSON：{"summary":"1-2句，说清今天学了什么/做了什么/心情如何","emoji":"😌"}`;
-
-/* ---------- 记忆问答（RAG over 本地记忆）---------- */
-export const ASK_SYS = `你是「团子」的随身问答助手，回答用户对**自己历史记录**的提问。
-下面会给你用户的全量记忆上下文（画像/课程笔记/卡片/转写/待办/日结）。规则：
-1. 优先从记忆里找答案，引用时说清楚来源（哪天哪条记录/哪门课）；
-2. 记忆里没有的信息，明确说"记录里没有"，不要编造；
-3. 也可回答通用学习问题，但优先个性化；
-4. 简洁口语化，中文，≤5句话。`;
-
-export function buildAskContext(st, question) {
-  const parts = [];
-  /* ===== 热记忆（有界，始终在上下文）===== */
-  if (st.profile && st.profile.text) parts.push(`【用户画像】\n${st.profile.text.slice(0, 300)}`);
-  const today = new Date().toDateString();
-  const cn = Object.entries(st.courseNotes || {}).slice(0, 6).map(([k, v]) => `${k}: ${String(v.content || '').slice(0, 160)}`).join('\n');
-  if (cn) parts.push(`【课程笔记（精炼）】\n${cn}`);
-  const todayCards = st.cards.filter((c) => c.status === 'active' && new Date(c.createdAt).toDateString() === today).slice(0, 10)
-    .map((c) => `Q:${c.q} A:${String(c.a).slice(0, 50)}`).join('\n');
-  if (todayCards) parts.push(`【今日卡片】\n${todayCards}`);
-  const todos = st.todos.filter((t) => !t.done).slice(0, 15).map((t) => `${t.text}${t.due ? '（截止' + t.due + '）' : ''}`).join('\n');
-  if (todos) parts.push(`【未完成待办】\n${todos}`);
-  const dailies = (st.dailies || []).slice(0, 5).map((d) => `[${d.date}] ${d.summary}`).join('\n');
-  if (dailies) parts.push(`【最近日结】\n${dailies}`);
-  /* ===== 冷记忆（按问题关键词检索档案，最多3条原文）===== */
-  const terms = String(question || '').split(/[？?，,。.\s、的什么哪怎么最近这我有和是不是在]+/).filter((t) => t.length >= 2).slice(0, 6);
-  const done = st.jobs.filter((j) => j.status === 'done');
-  const scored = done.map((j) => {
-    const hay = `${(j.extract && (j.extract.title + j.extract.summary)) || ''} ${j.asrText || ''}`;
-    let sc = 0; terms.forEach((t) => { if (hay.includes(t)) sc += 1; });
-    return { j, sc };
-  }).sort((a, b) => b.sc - a.sc);
-  const hits = scored.filter((x) => x.sc > 0).slice(0, 3);
-  const picked = hits.length ? hits : scored.slice(0, 2); /* 无命中给最近2条 */
-  const recents = picked.map(({ j }) => {
-    const d = new Date(j.createdAt);
-    return `[${d.getMonth() + 1}.${d.getDate()} ${(j.extract && j.extract.title) || j.title}]\n${(j.asrText || (j.extract && j.extract.summary) || '').slice(0, 350)}`;
-  }).join('\n\n');
-  if (recents) parts.push(`【相关档案（按提问检索）】\n${recents}`);
-  return parts.join('\n\n').slice(0, 8000);
-}
+export const DAILY_SYS = `你是「团团」——「团子」App 的每日整理器。把当天所有记录的标题与摘要压缩成一句话日结。只输出 JSON：{"summary":"1-2句，说清今天学了什么/做了什么/心情如何","emoji":"😌"}`;
