@@ -62,52 +62,54 @@ export default function App() {
 
   const mmss = (n) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
 
+  const showFab = tab !== 'ask';
+
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
       <StatusBar style="dark" />
       <SafeAreaView style={{ flex: 1, maxWidth: 430, alignSelf: 'center', width: '100%', paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0 }}>
         {tab === 'today' && (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 160, paddingHorizontal: 12 }} keyboardShouldPersistTaps="handled">
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 180, paddingHorizontal: 12 }} keyboardShouldPersistTaps="handled">
             <Today toast={toast} goAsk={(q) => { setAskPrefill(q); setTab('ask'); }} goJournal={() => setTab('journal')} />
           </ScrollView>
         )}
         {tab === 'journal' && <Journal toast={toast} goAsk={(q) => { setAskPrefill(q); setTab('ask'); }} />}
         {tab === 'ask' && <Ask toast={toast} prefill={askPrefill} clearPrefill={() => setAskPrefill('')} />}
         {tab === 'me' && (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 160, paddingHorizontal: 12 }} keyboardShouldPersistTaps="handled">
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 180, paddingHorizontal: 12 }} keyboardShouldPersistTaps="handled">
             <Me toast={toast} go={setTab} />
           </ScrollView>
         )}
 
-        <TabBar tabs={TABS} active={tab} onChange={setTab} fabGap />
+        <TabBar tabs={TABS} active={tab} onChange={setTab} fabGap={showFab} />
 
-        {/* 中央录音 FAB */}
-        <View style={{ position: 'absolute', bottom: 34, left: 0, right: 0, alignItems: 'center' }}>
-          <Animated.View style={{ transform: [{ scale: io.rec.on ? pulse : 1 }] }}>
-            <Pressable
-              onPress={io.rec.on ? io.stop : io.start}
-              onLongPress={() => !io.rec.on && setFabMenu(true)}
-              delayLongPress={300}
-              accessibilityLabel="录音按钮"
-              style={({ pressed }) => [
-                {
-                  width: 62, height: 62, borderRadius: 99, alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: io.rec.on ? T.red : T.orange,
-                  shadowColor: io.rec.on ? T.red : T.orange, shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 6,
-                  borderWidth: 4, borderColor: '#fff',
-                }, pressed && { opacity: 0.8 },
-              ]}>
-              <Ic name={io.rec.on ? 'stop' : 'mic'} size={26} color="#fff" stroke={2} />
-            </Pressable>
-          </Animated.View>
-          {io.rec.on ? (
-            <Pressable onPress={io.discard} style={{ position: 'absolute', right: 60, top: 16, backgroundColor: T.redSoft, borderWidth: 1.5, borderColor: '#F0C4BE', borderRadius: 99, paddingHorizontal: 14, paddingVertical: 8 }}>
-              <Text style={{ fontSize: 12, color: T.red, fontWeight: '700' }}>丢弃 {mmss(io.rec.sec)}</Text>
-            </Pressable>
-          ) : (
-            <Text style={{ fontSize: 9.5, color: '#8B8378', marginTop: 2, backgroundColor: 'rgba(255,255,255,.9)', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 }}>长按更多</Text>
-          )}
-        </View>
+        {/* 中央录音 FAB：泊在 Tab 栏中间缺口（对话页隐藏，输入框优先） */}
+        {showFab ? (
+          <View style={{ position: 'absolute', bottom: 24, left: 0, right: 0, alignItems: 'center' }} pointerEvents="box-none">
+            <Animated.View style={{ transform: [{ scale: io.rec.on ? pulse : 1 }] }}>
+              <Pressable
+                onPress={io.rec.on ? io.stop : io.start}
+                onLongPress={() => !io.rec.on && setFabMenu(true)}
+                delayLongPress={300}
+                accessibilityLabel="录音按钮"
+                style={({ pressed }) => [
+                  {
+                    width: 58, height: 58, borderRadius: 99, alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: io.rec.on ? T.red : T.orange,
+                    shadowColor: io.rec.on ? T.red : T.orange, shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6,
+                    borderWidth: 4, borderColor: '#fff',
+                  }, pressed && { opacity: 0.8 },
+                ]}>
+                <Ic name={io.rec.on ? 'stop' : 'mic'} size={24} color="#fff" stroke={2} />
+              </Pressable>
+            </Animated.View>
+            {io.rec.on ? (
+              <Pressable onPress={io.discard} style={{ position: 'absolute', right: 96, bottom: 14, backgroundColor: T.redSoft, borderWidth: 1.5, borderColor: '#F0C4BE', borderRadius: 99, paddingHorizontal: 14, paddingVertical: 8 }}>
+                <Text style={{ fontSize: 12, color: T.red, fontWeight: '700' }}>丢弃 {mmss(io.rec.sec)}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
 
         <ActionSheet
           visible={fabMenu} onClose={() => setFabMenu(false)}

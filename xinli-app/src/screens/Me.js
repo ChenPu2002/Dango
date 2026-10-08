@@ -2,16 +2,17 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, Alert } from 'react-native';
 import * as FS from 'expo-file-system/legacy';
 import { Card, Section, Row, Divider, Btn, SwitchMIUI } from '../ui';
+import { Ic } from '../icons';
 import { T } from '../theme';
 import { useStore, setState } from '../store';
-import { exportAll } from '../exporter';
 import { clearMemoryFile } from '../pipeline';
+import Files from './Files';
 
 export default function Me({ toast, go }) {
   const s = useStore();
   const [cfg, setCfg] = useState(s.settings);
   const [dirty, setDirty] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [filesOpen, setFilesOpen] = useState(false);
 
   const activeCards = s.cards.filter((c) => c.status === 'active');
   const totalMin = Math.round(s.jobs.filter((j) => j.kind === 'audio').reduce((a, j) => a + (j.dur || 0), 0) / 60);
@@ -29,7 +30,7 @@ export default function Me({ toast, go }) {
         value={cfg[key]} onChangeText={(v) => { setCfg({ ...cfg, [key]: v }); setDirty(true); }}
         placeholder={ph} placeholderTextColor={T.sub}
         secureTextEntry={mask} autoCapitalize="none" autoCorrect={false}
-        style={{ fontSize: 12, color: T.text, backgroundColor: '#F7F8FA', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 }}
+        style={{ fontSize: 12, color: T.text, backgroundColor: '#F7F4EF', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 }}
       />
     </View>
   );
@@ -41,33 +42,20 @@ export default function Me({ toast, go }) {
         await FS.deleteAsync(FS.documentDirectory + d + '/', { idempotent: true }).catch(() => {});
       }
       await clearMemoryFile().catch(() => {});
-      setState((st) => ({ ...st, jobs: [], cards: [], todos: [], moods: [], funs: [], dailies: [], weeklies: [], courseNotes: {}, profile: { text: '', updatedAt: 0 }, exportedFiles: [] }));
-      toast('已清空（含记忆文件）');
+      setState((st) => ({ ...st, jobs: [], cards: [], todos: [], moods: [], funs: [], dailies: [], weeklies: [], courseNotes: {}, profile: { text: '', updatedAt: 0 }, chats: [], exportedFiles: [] }));
+      toast('已清空（含备份文档清单）');
     } },
   ]);
 
   const audioJobs = s.jobs.filter((j) => j.kind === 'audio');
   const totalKB = s.jobs.reduce((a, j) => a + (j.size || 0), 0) / 1024;
+  const nFiles = (s.exportedFiles || []).length;
 
   return (
     <View>
       <View style={{ paddingHorizontal: 2, marginTop: 12 }}>
         <Text style={{ fontSize: 22, fontWeight: '800', color: T.text }}>我的</Text>
       </View>
-
-      <Section title="AI 服务配置">
-        <Card>
-          {field('LLM 接口地址（OpenAI 兼容）', 'llmUrl', 'https://api.deepseek.com/chat/completions')}
-          {field('LLM API Key', 'llmKey', 'sk-...', true)}
-          {field('模型', 'llmModel', 'deepseek-flash')}
-          {field('ASR API Key（火山 Seed-ASR）', 'asrKey', '火山 x-api-key', true)}
-          {dirty ? <Btn text="保存配置" onPress={save} style={{ marginTop: 14 }} /> : (
-            <Text style={{ fontSize: 11, color: T.sub, textAlign: 'center', marginTop: 12 }}>
-              当前：{cfg.llmModel} · 配置仅存手机本地
-            </Text>
-          )}
-        </Card>
-      </Section>
 
       <Section title="本学期">
         <Card style={{ flexDirection: 'row' }}>
@@ -86,36 +74,27 @@ export default function Me({ toast, go }) {
         </Card>
       </Section>
 
-      <Section title="文档固化（手机本地）">
+      <Section title="云文档">
         <Card style={{ paddingHorizontal: 16 }}>
-          <Row icon="folder" iconBg={T.blueSoft} iconColor={T.blue} title="文档同步位置" sub={s.settings.exportDir ? '已授权 · 文档/团子/' : '未授权（首次同步时引导授权）'} />
+          <Row icon="folder" iconBg={T.orangeSoft} title="全部文档" sub={nFiles ? `${nFiles} 个文档 · 点击浏览与阅读` : '备份后可在这里浏览全部记忆文档'}
+            onPress={() => setFilesOpen(true)} />
           <Divider />
-          <Row icon="upload" iconBg={T.orangeSoft} title="立即导出全部" sub={exporting ? '导出中…' : '课程笔记 + 近30条记录（转写/提炼）'}
-            onPress={async () => {
-              if (!s.settings.exportDir) { toast('先选择存储位置'); return; }
-              setExporting(true);
-              try { const n = await exportAll(); toast(`已导出 ${n} 个文件 → 文档/团子`); }
-              catch (e) { toast('导出失败: ' + String((e && e.message) || e).slice(0, 40)); }
-              setExporting(false);
-            }} />
-          <Divider />
-          <Row icon="book" iconBg={T.orangeSoft} title="浏览与编辑记忆" sub="画像/课程笔记/档案 · 在「手帐」页操作"
-            onPress={() => go && go('journal')} />
-
-          <Divider />
-          <Row icon="sync" iconBg={T.greenSoft} iconColor={T.green} title="处理完自动导出" sub="每条记录完成提炼后自动写入文档目录"
+          <Row icon="sync" iconBg={T.greenSoft} iconColor={T.green} title="自动备份" sub="每条记录完成后自动同步为文档"
             right={<SwitchMIUI on={!!s.settings.exportAuto} onChange={(v) => setState((st) => ({ ...st, settings: { ...st.settings, exportAuto: v } }))} />} />
         </Card>
       </Section>
 
-
-      <Section title="设备协同（预留）">
+      <Section title="AI 服务配置">
         <Card>
-          <Row icon="sliders" iconBg="#F0EDE7" iconColor="#9A948B" title="电脑端 / 心力球设备" sub="接入方案已预留 · 暂未启用" right={
-            <View style={{ backgroundColor: '#F0EDE7', borderRadius: 99, paddingHorizontal: 10, paddingVertical: 4 }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', color: T.sub }}>v2</Text>
-            </View>
-          } />
+          {field('LLM 接口地址（OpenAI 兼容）', 'llmUrl', 'https://api.deepseek.com/chat/completions')}
+          {field('LLM API Key', 'llmKey', 'sk-...', true)}
+          {field('模型', 'llmModel', 'deepseek-flash')}
+          {field('ASR API Key（火山 Seed-ASR）', 'asrKey', '火山 x-api-key', true)}
+          {dirty ? <Btn text="保存配置" onPress={save} style={{ marginTop: 14 }} /> : (
+            <Text style={{ fontSize: 11, color: T.sub, textAlign: 'center', marginTop: 12 }}>
+              当前：{cfg.llmModel} · 配置仅存手机本地
+            </Text>
+          )}
         </Card>
       </Section>
 
@@ -135,6 +114,8 @@ export default function Me({ toast, go }) {
           <Row icon="sparkle" iconBg={T.orangeSoft} title="团子" sub="手机端自操作 Agent · 录音/照片 → ASR/多模态 → 结构化提炼" right={<Text style={{ fontSize: 12, color: T.sub }}>v0.5</Text>} />
         </Card>
       </Section>
+
+      <Files visible={filesOpen} onClose={() => setFilesOpen(false)} toast={toast} />
     </View>
   );
 }

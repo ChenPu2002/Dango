@@ -206,13 +206,13 @@ export function InputSheet({ visible, onClose, title, initial, placeholder, mult
   );
 }
 export function TabBar({ tabs, active, onChange, fabGap }) {
-  /* fabGap：偶数 Tab 中间留出 FAB 泊位，避免中央录音键压住两侧 Tab */
+  /* fabGap：偶数 Tab 中间留出 FAB 泊位；无 FAB 的页面 Tab 均分 */
   const useGap = fabGap && tabs.length % 2 === 0;
   const half = useGap ? tabs.length / 2 : tabs.length;
   const tab = (t) => {
     const on = active === t.key;
     return (
-      <Pressable key={t.key} onPress={() => onChange(t.key)} style={{ flex: 1, alignItems: 'center', paddingVertical: 3 }}>
+      <Pressable key={t.key} onPress={() => onChange(t.key)} style={{ flex: 1, alignItems: 'center', paddingVertical: 4 }}>
         <Ic name={t.icon} size={23} color={on ? T.orange : '#B3ACA1'} stroke={on ? 1.9 : 1.7} />
         <Text style={{ fontSize: 10.5, fontWeight: '600', color: on ? T.orange : T.sub, marginTop: 3 }}>{t.label}</Text>
       </Pressable>
@@ -220,12 +220,12 @@ export function TabBar({ tabs, active, onChange, fabGap }) {
   };
   return (
     <View style={{
-      position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,.97)',
-      borderTopWidth: 0.5, borderTopColor: T.line, paddingTop: 8, paddingBottom: 16,
+      position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#FFFFFF',
+      borderTopWidth: 0.5, borderTopColor: T.line, paddingTop: 10, paddingBottom: 20,
     }}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         {tabs.slice(0, half).map(tab)}
-        {useGap ? <View style={{ width: 96 }} /> : null}
+        {useGap ? <View style={{ width: 100 }} /> : null}
         {tabs.slice(half).map(tab)}
       </View>
     </View>

@@ -115,14 +115,19 @@ function TodayTodos({ toast }) {
         </Pressable>
       </View>
       <View style={{ marginTop: 4 }}>
-        {todos.slice(0, 6).map((t) => (
+        {todos.slice(0, 4).map((t) => (
           <Pressable key={t.id} onPress={() => toggleTodo(t.id)} onLongPress={() => setMenu({ todo: t })} delayLongPress={350}
             style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9 }}>
             <View style={{ width: 20, height: 20, borderRadius: 7, borderWidth: 1.6, borderColor: T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }} />
-            <Text style={{ flex: 1, fontSize: 13.5, color: T.text }}>{t.text}</Text>
-            {t.due ? <Text style={{ fontSize: 10, color: T.red }}>{t.due}</Text> : null}
+            <Text style={{ flex: 1, fontSize: 13.5, color: T.text }} numberOfLines={1}>{t.text}</Text>
+            {t.due ? <Text style={{ fontSize: 10, color: T.red, marginLeft: 6 }}>{t.due}</Text> : null}
           </Pressable>
         ))}
+        {todos.length > 4 ? (
+          <Pressable onPress={toggleTodo} style={{ paddingVertical: 6 }}>
+            <Text style={{ fontSize: 11, color: T.sub }}>还有 {todos.length - 4} 件 · 完成上面的会依次出现</Text>
+          </Pressable>
+        ) : null}
         {doneToday.slice(0, 3).map((t) => (
           <Pressable key={t.id} onPress={() => toggleTodo(t.id)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, opacity: 0.55 }}>
             <View style={{ width: 20, height: 20, borderRadius: 7, backgroundColor: T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
@@ -245,19 +250,22 @@ export default function Today({ toast, goAsk, goJournal }) {
         return (
           <Card style={{ paddingVertical: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 24, fontWeight: '900', color: st.color, letterSpacing: 0.5 }}>{st.en}</Text>
-              <Text style={{ fontSize: 12, color: T.sub, marginLeft: 8 }}>{st.zh}{new Date(latestMood.createdAt).toDateString() === new Date().toDateString() ? '' : ` · ${fmtDate(latestMood.createdAt)}`}</Text>
+              <Text style={{ fontSize: 22, fontWeight: '900', color: st.color, letterSpacing: 0.5 }}>{st.en}</Text>
+              <Text style={{ fontSize: 12, color: T.sub, marginLeft: 8, flex: 1 }} numberOfLines={1}>{st.zh}{new Date(latestMood.createdAt).toDateString() === new Date().toDateString() ? '' : ` · ${fmtDate(latestMood.createdAt)}`}</Text>
               <Text style={{ fontSize: 14, marginLeft: 6 }}>{latestMood.emoji}</Text>
-              <View style={{ flex: 1 }} />
-              {(latestMood.tags || []).slice(0, 2).map((t) => (
-                <View key={t} style={{ backgroundColor: '#FFF0F4', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 4 }}>
-                  <Text style={{ fontSize: 10, color: T.red }}>{t}</Text>
-                </View>
-              ))}
             </View>
+            {(latestMood.tags || []).length ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 7 }}>
+                {latestMood.tags.slice(0, 4).map((t, i) => (
+                  <View key={i} style={{ backgroundColor: '#FBEDE6', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3, marginRight: 6, marginBottom: 2 }}>
+                    <Text style={{ fontSize: 10, color: T.orangeDeep }} numberOfLines={1}>{t}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
             {pts ? <View style={{ marginTop: 6 }}><Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`}><Path d={d} fill="none" stroke={T.orange} strokeWidth="2" strokeLinecap="round" /></Svg></View> : null}
             {(latestMood.moments || []).slice(0, 1).map((mo, i) => (
-              <Text key={i} style={{ fontSize: 11, color: T.text2, lineHeight: 17, marginTop: 4 }}>{mo.text}</Text>
+              <Text key={i} style={{ fontSize: 11, color: T.text2, lineHeight: 17, marginTop: 4 }} numberOfLines={2}>{mo.text}</Text>
             ))}
           </Card>
         );

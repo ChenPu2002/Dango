@@ -105,7 +105,7 @@ export default function Journal({ toast, goAsk }) {
         ))}
       </ScrollView>
 
-      <ScrollView style={{ flex: 1, marginTop: 4 }} contentContainerStyle={{ paddingHorizontal: 2, paddingBottom: 110 }}>
+      <ScrollView style={{ flex: 1, marginTop: 4 }} contentContainerStyle={{ paddingHorizontal: 2, paddingBottom: 170 }}>
         {filtered.length ? filtered.map((d) => {
           const st = DOC_STYLE[d.type === 'archive' ? `archive_${d.iconKind}` : d.type] || DOC_STYLE.archive_doc;
           return (
