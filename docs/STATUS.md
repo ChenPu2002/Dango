@@ -4,6 +4,24 @@
 > 本地：~/campus-echo-demo/
 > 本轮：STATUS 旧清单 5 项全部收口 + 一轮完整视觉重设计（去 emoji 化）
 
+## 本轮完成（2026-10-09 晚 · 第六轮：录音防误触 / 工具结果人读化 / Agent CRUD / 记忆分层防冗余）
+
+用户七项反馈一次收口：
+
+| 事项 | 结果 | 验证 |
+|---|---|---|
+| 对话页录音键消失 | ✅ FAB 四 Tab 常驻（Tab 栏中央缺口泊位），仅键盘弹出时让位；录音中 FAB 上方悬浮 ⏺ 时长胶囊 | 代码走查 |
+| 录音丢弃/结束易误触 | ✅ 录音中点 FAB 不再直接结束，改弹「录音控制浮层」：时长大字 + 完成·保存并整理 / 继续录音 / **按住 700ms 进度填满才丢弃**（松手即取消）；原行内"丢弃"小按钮移除 | 代码走查（真机回归项） |
+| 工具结果省略 + 裸 ID | ✅ agent.js 新增 humanizeArgs/humanizeResult：按工具定制人读文案（命中列表〔日期〕标题/待办•✓+截止/心情 emoji 分数…），过滤 id 等机器字段；卡片标题改用 brief 人话；结果完整不截断（maxHeight 300 内嵌滚动）；get_todos 增 dueText（逾期/今天到期） | test-crud.mjs 4 例断言 |
+| 手帐/待办 AI CRUD 预留接口 | ✅ 工具目录 11→20：update_todo(改文/改截止)/reopen_todo/delete_todo、list_courses/delete_course_note、get_cards/add_card/update_card/archive_card/delete_card；AGENT_SYS 增"先查后改（拿 id 再操作）"规则；ActionChips 适配 13 种动作（删除类红 chip） | test-crud.mjs 22 例全过 |
+| 待办误触/单条删改/DDL | ✅ 已完成行整行不再可点（点勾选框才恢复）；行尾 ⋯ 显式菜单（编辑内容与截止/恢复/删除）；TodoEditSheet=文本+截止快捷 chips(无/今天/明天/后天/下周)+自然语言自定义；「清除已完成」加 Alert 确认；pipeline 新增 updateTodo(id,{text,due}) | 代码走查（真机回归项） |
+| 超长课堂录音 | ✅ map-reduce：转写 >6500 字按句界分块(~5500字/块)→逐段 SEGMENT_SYS 提要点（UI 显示"分段提炼 n/m…"）→汇总成完整笔记；api.js 新增 SEGMENT_SYS | test-crud.mjs：拼接无损/不撕裂句子/短文不分块 |
+| 两个月信息冗余 | ✅ 三层压缩链补全：日结→周结→**月结(monthlies, 新)**；夜间维护新增 **转写瘦身**（>14 天留 300 字）与**深冷**（>60 天只留标题+摘要）；手帐页新增「记忆分层」卡（工作/知识/沉淀三层计数 + 流转路径说明 + 立即整理=runArchivist+强制夜间维护）；exporter/手帐 chips/阅读器全支持月结 | test-archivist.mjs 非 LLM 9 例过（LLM 例需真 key） |
+| 手帐卡片底部弹出难受 | ✅ 阅读器改 iOS push 式：右侧滑入(260ms ease-out)/右滑出(200ms)，transparent Modal + Animated translateX | 代码走查（真机回归项） |
+
+新增回归脚本 `scripts/test-crud.mjs`（不依赖 LLM key）：待办/卡片/课程笔记 CRUD 22 例 + humanize 过滤 id + splitText 分块不变量。
+本机无 secrets.js（空 key 模板），LLM 相关断言（archivist carry/drop、日结）需真机真 key 复跑。
+
 ## 总体架构（已实现）
 
 ```
@@ -92,8 +110,8 @@ FAB录音/拍照/文档 → ASR(火山Seed-ASR) → 提炼(DeepSeek多模态)
 | 文件 | 职责 |
 |---|---|
 | xinli-app/src/icons.js | **自绘线性图标集**（Ic 组件，SF Symbols 手感） |
-| xinli-app/src/agent.js | Agent Runtime：11 个工具/执行/8轮循环/轨迹 |
-| xinli-app/src/pipeline.js | 处理管线 + 合并引擎 + runArchivist(日终归档) |
+| xinli-app/src/agent.js | Agent Runtime：20 个工具(CRUD 全集)/执行/8轮循环/轨迹/结果人读化 |
+| xinli-app/src/pipeline.js | 处理管线 + 合并引擎 + 长录音分段提炼 + runArchivist(日终归档) + nightlyMaintenance(周结/月结/瘦身) |
 | xinli-app/src/useRecorder.js | FAB 的录音/拍照/文档录入 |
 | xinli-app/src/screens/Today.js | 今日工作台（心情/待办/卡片deck/时间线） |
 | xinli-app/src/screens/Journal.js | 手帐（文档引擎） |
@@ -101,6 +119,7 @@ FAB录音/拍照/文档 → ASR(火山Seed-ASR) → 提炼(DeepSeek多模态)
 | xinli-app/src/exporter.js | SAF 文档固化（ensureExportDir 带 ask 门控） |
 | xinli-app/src/api.js | DeepSeek/火山ASR客户端 + 全部提示词 |
 | xinli-app/scripts/test-archivist.mjs | 归档 Agent 的 Node 验证 harness |
+| xinli-app/scripts/test-crud.mjs | Agent CRUD 工具 + 分块 + 人读化的 Node 验证（无需 LLM key） |
 | docs/DESIGN-v2.md | R1-R4 重设计方案 |
 | docs/DESIGN-memory.md | 记忆机制设计（三层记忆/合并式提炼） |
 | docs/API.md | 内外部API约定 |

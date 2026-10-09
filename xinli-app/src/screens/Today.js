@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { View, Text, Pressable, TextInput, Modal, ScrollView, Dimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, Pressable, TextInput, Modal, ScrollView, Dimensions, Alert } from 'react-native';
 import * as Audio from 'expo-audio';
 import Svg, { Path } from 'react-native-svg';
-import { Card, Section, Chip, ActionSheet, InputSheet, PulseDot, MarkdownText } from '../ui';
+import { Card, Section, Chip, ActionSheet, Sheet, Btn, PulseDot, MarkdownText } from '../ui';
 import { Ic } from '../icons';
 import { T } from '../theme';
-import { useStore, setState, getState, uid, fmtTime, fmtDate, dueLabel, dayStart, todayKeyISO } from '../store';
-import { deleteJob, editTodo, deleteTodo, toggleTodo, retryJob } from '../pipeline';
+import { useStore, setState, uid, fmtTime, fmtDate, dueLabel, dayStart, todayKeyISO } from '../store';
+import { deleteJob, updateTodo, deleteTodo, toggleTodo, retryJob } from '../pipeline';
 
 const KIND = { audio: { icon: 'mic' }, photo: { icon: 'camera' }, doc: { icon: 'doc' } };
 
@@ -85,6 +85,44 @@ function Entry({ j, onMenu }) {
   );
 }
 
+/* ===== 待办编辑弹层：内容 + 截止（快捷 chips + 自然语言自定义）===== */
+const DUE_CHIPS = ['无', '今天', '明天', '后天', '下周'];
+
+function TodoEditSheet({ visible, onClose, initial, onSubmit }) {
+  const [text, setText] = useState('');
+  const [due, setDue] = useState('');
+  const [custom, setCustom] = useState('');
+  useEffect(() => {
+    if (visible) { setText((initial && initial.text) || ''); setDue((initial && initial.due) || ''); setCustom(''); }
+  }, [visible]);
+  const submit = () => {
+    if (!text.trim()) { onClose(); return; }
+    const raw = custom.trim() || due;
+    onSubmit(text.trim(), raw === '无' ? '' : raw); /* "无" = 清除截止 */
+    onClose();
+  };
+  return (
+    <Sheet visible={visible} onClose={onClose}>
+      <Text style={{ fontSize: 16, fontWeight: '800', color: T.text, marginBottom: 12 }}>编辑待办</Text>
+      <TextInput value={text} onChangeText={setText} placeholder="待办内容…" placeholderTextColor={T.sub} autoFocus
+        style={{ backgroundColor: '#fff', borderRadius: 14, padding: 14, fontSize: 14, color: T.text }} />
+      <Text style={{ fontSize: 12, fontWeight: '700', color: T.sub, marginTop: 14, marginBottom: 8 }}>截止时间</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {DUE_CHIPS.map((c) => (
+          <Pressable key={c} onPress={() => { setDue(c); setCustom(''); }}
+            style={{ borderRadius: 99, paddingHorizontal: 14, paddingVertical: 7, marginRight: 8, marginBottom: 6, backgroundColor: due === c && !custom ? T.orange : '#F3F0EA' }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: due === c && !custom ? '#fff' : T.sub }}>{c}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <TextInput value={custom} onChangeText={(v) => { setCustom(v); if (v) setDue(''); }} placeholder={'自定义：周五 / 11月2日 / 下周三…'}
+        placeholderTextColor={T.sub} returnKeyType="done"
+        style={{ backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 13, color: T.text, marginTop: 4 }} />
+      <Btn text="保存" onPress={submit} style={{ marginTop: 14 }} />
+    </Sheet>
+  );
+}
+
 /* ===== 今日待办 ===== */
 function TodayTodos({ toast }) {
   const s = useStore();
@@ -113,6 +151,13 @@ function TodayTodos({ toast }) {
       </View>
     );
   };
+  /* 行尾 ⋯：显式菜单入口（长按不可发现，删除/改截止都走这里） */
+  const MoreBtn = ({ t }) => (
+    <Pressable onPress={() => setMenu({ todo: t })} hitSlop={8}
+      style={({ pressed }) => [{ padding: 6, marginRight: -6 }, pressed && { opacity: 0.5 }]}>
+      <Ic name="dots" size={15} color="#C6BFB4" />
+    </Pressable>
+  );
   return (
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -136,21 +181,27 @@ function TodayTodos({ toast }) {
             <Text style={{ flex: 1, fontSize: 13.5, color: T.text }} numberOfLines={2}>{t.text}</Text>
             {carried(t) ? <Text style={{ fontSize: 9.5, color: '#A8A094', marginLeft: 6 }}>遗留</Text> : null}
             <DueBadge t={t} />
+            <MoreBtn t={t} />
           </Pressable>
         ))}
         {doneToday.length ? (
           <View style={{ marginTop: 2, paddingTop: 6, borderTopWidth: 0.5, borderTopColor: T.line }}>
+            {/* 已完成：点勾选框才恢复（防误触整行），改/删走 ⋯ */}
             {doneToday.map((t) => (
-              <Pressable key={t.id} onPress={() => toggleTodo(t.id)} onLongPress={() => setMenu({ todo: t })} delayLongPress={350}
-                android_ripple={{ color: 'rgba(60,40,20,0.05)', foreground: true }}
-                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderRadius: 8 }}>
-                <View style={{ width: 20, height: 20, borderRadius: 7, backgroundColor: T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+              <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 7 }}>
+                <Pressable onPress={() => toggleTodo(t.id)} hitSlop={6} accessibilityLabel="恢复为未完成"
+                  style={({ pressed }) => [{ width: 20, height: 20, borderRadius: 7, backgroundColor: pressed ? '#F0A88C' : T.orange, alignItems: 'center', justifyContent: 'center', marginRight: 10 }, pressed && { opacity: 0.7 }]}>
                   <Ic name="check" size={11} color="#fff" stroke={2.8} />
-                </View>
-                <Text style={{ flex: 1, fontSize: 13, color: T.sub, textDecorationLine: 'line-through' }}>{t.text}</Text>
-              </Pressable>
+                </Pressable>
+                <Text style={{ flex: 1, fontSize: 13, color: T.sub, textDecorationLine: 'line-through' }} numberOfLines={1}>{t.text}</Text>
+                <DueBadge t={t} />
+                <MoreBtn t={t} />
+              </View>
             ))}
-            <Pressable onPress={() => { doneToday.forEach((t) => deleteTodo(t.id)); toast('已清除完成项'); }} style={{ alignSelf: 'flex-end', paddingVertical: 5, paddingHorizontal: 4 }}>
+            <Pressable onPress={() => Alert.alert(`清除 ${doneToday.length} 条已完成待办？`, '清除后不可恢复', [
+              { text: '取消', style: 'cancel' },
+              { text: '清除', style: 'destructive', onPress: () => { doneToday.forEach((t) => deleteTodo(t.id)); toast('已清除完成项'); } },
+            ])} style={{ alignSelf: 'flex-end', paddingVertical: 5, paddingHorizontal: 4 }}>
               <Text style={{ fontSize: 10.5, color: T.sub }}>清除已完成</Text>
             </Pressable>
           </View>
@@ -159,11 +210,16 @@ function TodayTodos({ toast }) {
       </View>
       <ActionSheet visible={!!menu} onClose={() => setMenu(null)} title={menu ? menu.todo.text : ''}
         options={menu ? [
-          { icon: 'pencil', label: '编辑', onPress: () => setEdit({ todo: menu.todo }) },
+          { icon: 'pencil', label: '编辑内容与截止', onPress: () => setEdit({ todo: menu.todo }) },
+          ...(menu.todo.done ? [{ icon: 'sync', label: '恢复为未完成', onPress: () => { toggleTodo(menu.todo.id); toast('已恢复'); } }] : []),
           { icon: 'trash', label: '删除', tone: 'danger', onPress: () => { deleteTodo(menu.todo.id); toast('已删除'); } },
         ] : []} />
-      <InputSheet visible={!!edit} onClose={() => setEdit(null)} title="编辑待办" initial={edit ? edit.todo.text : ''}
-        onSubmit={(v) => { if (edit && v.trim()) { editTodo(edit.todo.id, v.trim()); toast('已更新'); } }} />
+      <TodoEditSheet visible={!!edit} onClose={() => setEdit(null)} initial={edit ? { text: edit.todo.text, due: edit.todo.due } : {}}
+        onSubmit={(newText, newDue) => {
+          if (!edit) return;
+          updateTodo(edit.todo.id, { text: newText, due: newDue });
+          toast(newDue ? `已更新 · 截止 ${newDue}` : '已更新');
+        }} />
     </Card>
   );
 }

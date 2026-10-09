@@ -1,12 +1,12 @@
 /* 手帐：App 内文档引擎（store 为真相源， 文档/团子/ 为同步镜像） */
-import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable, TextInput, Modal, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, Pressable, TextInput, Modal, ScrollView, KeyboardAvoidingView, Platform, Alert, Animated, Dimensions, Easing } from 'react-native';
 import { Card, Btn, MarkdownText } from '../ui';
 import { Ic } from '../icons';
 import { T } from '../theme';
 import { useStore, setState, fmtDate } from '../store';
 import { writeMemoryFile, exportAll, ensureExportDir } from '../exporter';
-import { deleteJob } from '../pipeline';
+import { deleteJob, tidyMemory } from '../pipeline';
 
 /* 图标配色：不同文档类型的柔和底色 */
 const DOC_STYLE = {
@@ -14,6 +14,7 @@ const DOC_STYLE = {
   note: { icon: 'book', bg: T.orangeSoft, fg: T.orangeDeep },
   weekly: { icon: 'calendar', bg: T.greenSoft, fg: T.green },
   daily: { icon: 'calendar', bg: T.greenSoft, fg: T.green },
+  monthly: { icon: 'layers', bg: T.purpleSoft, fg: T.purple },
   archive_audio: { icon: 'mic', bg: T.blueSoft, fg: T.blue },
   archive_photo: { icon: 'camera', bg: T.blueSoft, fg: T.blue },
   archive_doc: { icon: 'doc', bg: T.blueSoft, fg: T.blue },
@@ -27,6 +28,7 @@ function buildDocs(s) {
     docs.push({ key: `note-${k}`, type: 'note', title: k, sub: `课程笔记 · ${fmtDate(v.updatedAt || Date.now())}`, body: v.content, editable: true, course: k });
   });
   (s.weeklies || []).forEach((w) => docs.push({ key: `wk-${w.range}`, type: 'weekly', title: `周记 ${w.range}`, sub: '夜间自动压缩', body: w.summary }));
+  (s.monthlies || []).forEach((m) => docs.push({ key: `mo-${m.range}`, type: 'monthly', title: `月结 ${m.range}`, sub: '长期沉淀', body: m.summary }));
   (s.dailies || []).forEach((d) => docs.push({ key: `dy-${d.date}`, type: 'daily', title: `${d.date} 小结`, sub: '', body: d.summary }));
   s.jobs.filter((j) => j.status === 'done').forEach((j) => {
     const d = new Date(j.createdAt);
@@ -45,6 +47,80 @@ function buildDocs(s) {
   return docs;
 }
 
+/* ===== 记忆分层卡：工作/知识/沉淀 三层 + 流转路径 + 手动整理 ===== */
+function MemoryLayers({ toast }) {
+  const s = useStore();
+  const [busy, setBusy] = useState(false);
+  const hot = s.jobs.filter((j) => j.createdAt > Date.now() - 7 * 864e5).length;
+  const warmNotes = Object.keys(s.courseNotes || {}).length;
+  const warmCards = s.cards.filter((c) => c.status === 'active').length;
+  const dy = (s.dailies || []).length, wk = (s.weeklies || []).length, mo = (s.monthlies || []).length;
+  const tidy = async () => {
+    if (busy) return;
+    setBusy(true);
+    toast('整理中：归档 · 压缩 · 瘦身…');
+    try {
+      const did = await tidyMemory();
+      toast(did && did.length ? '整理完成：' + did.join('、') : '记忆已经很整洁 ✨');
+    } catch (_) { toast('整理失败，稍后再试'); }
+    setBusy(false);
+  };
+  const row = (icon, name, detail, fg, bg) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 5 }}>
+      <View style={{ width: 26, height: 26, borderRadius: 9, backgroundColor: bg, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+        <Ic name={icon} size={13} color={fg} />
+      </View>
+      <Text style={{ fontSize: 12.5, fontWeight: '700', color: T.text, width: 52 }}>{name}</Text>
+      <Text style={{ flex: 1, fontSize: 11, color: T.sub }}>{detail}</Text>
+    </View>
+  );
+  return (
+    <Card style={{ paddingVertical: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+        <Ic name="layers" size={15} color={T.orangeDeep} />
+        <Text style={{ fontSize: 14, fontWeight: '800', color: T.text, marginLeft: 7 }}>记忆分层</Text>
+        <View style={{ flex: 1 }} />
+        <Pressable onPress={tidy} disabled={busy} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', backgroundColor: T.orangeSoft, borderRadius: 99, paddingHorizontal: 11, paddingVertical: 5, opacity: busy ? 0.5 : 1 }, pressed && { opacity: 0.6 }]}>
+          <Ic name="sync" size={11} color={T.orangeDeep} />
+          <Text style={{ fontSize: 11, fontWeight: '700', color: T.orangeDeep, marginLeft: 4 }}>{busy ? '整理中…' : '立即整理'}</Text>
+        </Pressable>
+      </View>
+      {row('sparkle', '工作层', `近7天记录 ${hot} 条 · 待办 ${s.todos.filter((t) => !t.done && !t.archived).length} 件`, T.orangeDeep, T.orangeSoft)}
+      {row('book', '知识层', `课程笔记 ${warmNotes} 门 · 活跃卡片 ${warmCards} 张`, T.green, T.greenSoft)}
+      {row('box', '沉淀层', `日结 ${dy} · 周结 ${wk} · 月结 ${mo}`, T.purple, T.purpleSoft)}
+      <View style={{ borderTopWidth: 0.5, borderTopColor: T.line, marginTop: 6, paddingTop: 8 }}>
+        <Text style={{ fontSize: 10.5, color: T.sub, lineHeight: 16 }}>
+          流转路径：记录 →日终→ 日结 →周日→ 周结 →月末→ 月结{'\n'}
+          转写 14 天后瘦身 · 60 天后只留摘要（越老越冷，知识沉淀在笔记与卡片）
+        </Text>
+      </View>
+    </Card>
+  );
+}
+
+/* ===== iOS push 式页面容器：从右侧滑入，退出时右滑出 ===== */
+function PushModal({ visible, onClose, children }) {
+  const W = Dimensions.get('window').width;
+  const x = useRef(new Animated.Value(W)).current;
+  const [render, setRender] = useState(false);
+  useEffect(() => {
+    if (visible) {
+      setRender(true);
+      Animated.timing(x, { toValue: 0, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    } else {
+      Animated.timing(x, { toValue: W, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(({ finished }) => { if (finished) setRender(false); });
+    }
+  }, [visible]);
+  if (!render) return null;
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={onClose}>
+      <Animated.View style={{ flex: 1, backgroundColor: T.bg, transform: [{ translateX: x }] }}>
+        {children}
+      </Animated.View>
+    </Modal>
+  );
+}
+
 export default function Journal({ toast, goAsk }) {
   const s = useStore();
   const [q, setQ] = useState('');
@@ -54,11 +130,11 @@ export default function Journal({ toast, goAsk }) {
   const [draft, setDraft] = useState('');
 
   const docs = useMemo(() => buildDocs(s), [s]);
-  const CHIPS = ['全部', '课程', '画像', '日结', '档案'];
+  const CHIPS = ['全部', '课程', '画像', '小结', '档案'];
   const filtered = docs.filter((d) => {
     if (chip === '课程' && d.type !== 'note') return false;
     if (chip === '画像' && d.type !== 'profile') return false;
-    if (chip === '日结' && !['daily', 'weekly'].includes(d.type)) return false;
+    if (chip === '小结' && !['daily', 'weekly', 'monthly'].includes(d.type)) return false;
     if (chip === '档案' && d.type !== 'archive') return false;
     if (q.trim() && !(`${d.title}${d.body}`.includes(q.trim()))) return false;
     return true;
@@ -91,6 +167,8 @@ export default function Journal({ toast, goAsk }) {
         <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>全部记忆都在这里 · 搜索 / 阅读 / 编辑</Text>
       </View>
 
+      <MemoryLayers toast={toast} />
+
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12, ...T.shadow }}>
         <Ic name="search" size={15} color="#B3ACA1" />
         <TextInput value={q} onChangeText={setQ} placeholder="搜索全部记忆…" placeholderTextColor={T.sub}
@@ -118,7 +196,7 @@ export default function Journal({ toast, goAsk }) {
               </View>
             );
             if (d.type === 'note' && !shownNotes) { shownNotes = true; els.push(label('lb-note', '课程笔记')); }
-            if ((d.type === 'daily' || d.type === 'weekly') && !shownSum) { shownSum = true; els.push(label('lb-sum', '小结')); }
+            if (['daily', 'weekly', 'monthly'].includes(d.type) && !shownSum) { shownSum = true; els.push(label('lb-sum', '小结')); }
             if (d.type === 'archive' && d.job) {
               const dd = new Date(d.job.createdAt);
               const day = `${dd.getMonth() + 1}月${dd.getDate()}日 · 周${'日一二三四五六'[dd.getDay()]}`;
@@ -154,8 +232,8 @@ export default function Journal({ toast, goAsk }) {
         )}
       </ScrollView>
 
-      {/* 全屏阅读器 */}
-      <Modal visible={!!reader} animationType="slide" onRequestClose={() => setReader(null)}>
+      {/* 全屏阅读器（push 式：从右侧滑入） */}
+      <PushModal visible={!!reader} onClose={() => { setReader(null); setEditing(false); }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: T.bg }}>
           {reader ? (
             <View style={{ flex: 1, paddingTop: 56, paddingHorizontal: 16 }}>
@@ -215,7 +293,7 @@ export default function Journal({ toast, goAsk }) {
             </View>
           ) : null}
         </KeyboardAvoidingView>
-      </Modal>
+      </PushModal>
     </View>
   );
 }

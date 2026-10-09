@@ -24,6 +24,7 @@ export const DEFAULTS = {
   profile: { text: '', updatedAt: 0 },
   dailies: [],     // {date:'10.7', summary, emoji, n} 每日小结（防信息爆炸的第一层压缩）
   weeklies: [],    // {range:'10.1-10.7', summary} 周结（第二层压缩）
+  monthlies: [],   // {range:'10.1-10.31', summary} 月结（第三层压缩，支撑长期使用不冗余）
   chats: [],       // （旧字段，迁移为 sessions）
   sessions: [],    // 多会话：{id,title,createdAt,updatedAt,messages:[{id,q,a,steps,actions,at}]}
   currentSessionId: '',
@@ -44,6 +45,7 @@ function normalize(s) {
     profile: s.profile || DEFAULTS.profile,
     dailies: s.dailies || [],
     weeklies: s.weeklies || [],
+    monthlies: s.monthlies || [],
     lastNightlyAt: s.lastNightlyAt || 0,
     exportedFiles: s.exportedFiles || [],
     lastArchivistDay: s.lastArchivistDay || '',

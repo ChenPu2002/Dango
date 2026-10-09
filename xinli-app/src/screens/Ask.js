@@ -5,9 +5,9 @@ import { Card, MarkdownText, PulseDot, ActionSheet } from '../ui';
 import { Ic } from '../icons';
 import { T } from '../theme';
 import { useStore, setState, uid, fmtDate } from '../store';
-import { runAgent } from '../agent';
+import { runAgent, humanizeArgs, humanizeResult } from '../agent';
 
-const QUICK = ['我最近的作业有哪些？', '上周学了什么？', '帮我记一下周五要交大纲', '我现在心情怎么样？'];
+const QUICK = ['我最近的作业有哪些？', '上周学了什么？', '帮我记一下周五要交大纲', '我现在心情怎么样？', '把交大纲那条待办挪到下周一'];
 
 /* ===== 工具调用卡（ETA 式：位于回答气泡上方，含参数/结果详情） ===== */
 const TOOL_META = {
@@ -15,34 +15,34 @@ const TOOL_META = {
   read_transcript: { icon: 'doc' },
   list_records: { icon: 'clock' },
   read_course_note: { icon: 'book' },
+  list_courses: { icon: 'book' },
+  update_course_note: { icon: 'book' },
+  delete_course_note: { icon: 'trash' },
   get_todos: { icon: 'check' },
   get_dailies: { icon: 'calendar' },
   get_moods: { icon: 'mood' },
+  get_cards: { icon: 'doc' },
   add_todo: { icon: 'plus' },
-  complete_todo: { icon: 'check' },
+  update_todo: { icon: 'pencil' },
+  delete_todo: { icon: 'trash' },
+  add_card: { icon: 'plus' },
+  update_card: { icon: 'pencil' },
   update_profile: { icon: 'user' },
-  update_course_note: { icon: 'book' },
 };
-
-const fmtArgs = (args) => Object.entries(args || {})
-  .map(([k, v]) => `${k}: ${typeof v === 'string' ? `"${v}"` : JSON.stringify(v)}`)
-  .join(',  ');
 
 function ToolCallCard({ step, active }) {
   const [open, setOpen] = useState(false);
   const meta = TOOL_META[step.name] || { icon: 'sparkle' };
-  const resultStr = (() => {
-    try { return JSON.stringify(step.result, null, 1).replace(/\n\s*/g, ' ').slice(0, 420); } catch (_) { return String(step.result); }
-  })();
+  /* 结果经二次处理：按工具定制人读文案，过滤 id 等机器字段，完整不截断（长内容内嵌滚动） */
+  const argsStr = humanizeArgs(step.args);
+  const resultStr = humanizeResult(step.name, step.result);
   return (
     <View style={{ borderWidth: 0.5, borderColor: '#E8E2D8', backgroundColor: '#FFFEFB', borderRadius: 12, marginBottom: 6 }}>
       <Pressable onPress={() => setOpen(!open)} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 9 }, pressed && { opacity: 0.7 }]}>
         <Ic name={meta.icon} size={14} color={T.orangeDeep} />
-        <Text style={{ fontSize: 11.5, fontWeight: '700', color: T.text2, marginLeft: 7 }} numberOfLines={1}>
-          {step.name}
-          {step.args && Object.keys(step.args).length ? <Text style={{ fontWeight: '400', color: T.sub }}> · {fmtArgs(step.args).slice(0, 26)}</Text> : null}
+        <Text style={{ fontSize: 11.5, fontWeight: '700', color: T.text2, marginLeft: 7, flex: 1 }} numberOfLines={1}>
+          {step.brief || step.name}
         </Text>
-        <View style={{ flex: 1 }} />
         {active ? <PulseDot /> : <Ic name="check" size={12} color={T.green} stroke={2.4} />}
         <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }], marginLeft: 8 }}>
           <Ic name="chevD" size={11} color="#C6BFB4" stroke={2.2} />
@@ -50,14 +50,19 @@ function ToolCallCard({ step, active }) {
       </Pressable>
       {open ? (
         <View style={{ borderTopWidth: 0.5, borderTopColor: '#EFEAE1', paddingHorizontal: 10, paddingTop: 7, paddingBottom: 9 }}>
+          <Text style={{ fontSize: 9, color: '#C6BFB4', fontWeight: '700', letterSpacing: 0.3, marginBottom: 3 }}>{step.name}</Text>
           <Text style={{ fontSize: 10.5, color: T.sub, lineHeight: 16 }}>
             <Text style={{ fontWeight: '800', color: '#B7B0A4' }}>参数 </Text>
-            {fmtArgs(step.args) || '（无）'}
+            {argsStr || '（无）'}
           </Text>
-          <Text style={{ fontSize: 10.5, color: T.sub, lineHeight: 16, marginTop: 4 }}>
-            <Text style={{ fontWeight: '800', color: '#B7B0A4' }}>结果 </Text>
-            {resultStr}
-          </Text>
+          <View style={{ marginTop: 4 }}>
+            <ScrollView style={{ maxHeight: 300 }} nestedScrollEnabled>
+              <Text style={{ fontSize: 10.5, color: T.sub, lineHeight: 16, paddingBottom: 2 }}>
+                <Text style={{ fontWeight: '800', color: '#B7B0A4' }}>结果{'\n'}</Text>
+                {resultStr}
+              </Text>
+            </ScrollView>
+          </View>
         </View>
       ) : null}
     </View>
@@ -66,16 +71,37 @@ function ToolCallCard({ step, active }) {
 
 function ActionChips({ actions }) {
   if (!actions || !actions.length) return null;
+  const chipText = (a) => {
+    const r = a.result || {}, g = a.args || {};
+    switch (a.name) {
+      case 'add_todo': return `已添加待办：${g.text || ''}`;
+      case 'update_todo': return `已改待办：${r.updated || g.text || ''}`;
+      case 'complete_todo': return `已完成：${r.completed || g.text || ''}`;
+      case 'reopen_todo': return `已恢复：${r.reopened || ''}`;
+      case 'delete_todo': return `已删除待办：${r.deleted || ''}`;
+      case 'add_card': return `已添加卡片：${String(g.q || '').slice(0, 12)}`;
+      case 'update_card': return `已订正卡片：${r.updated || ''}`;
+      case 'archive_card': return `已归档卡片：${r.archived || ''}`;
+      case 'delete_card': return `已删除卡片：${r.deleted || ''}`;
+      case 'update_profile': return '画像已更新';
+      case 'update_course_note': return `《${g.course || ''}》笔记已更新`;
+      case 'delete_course_note': return `《${r.deleted || g.course || ''}》笔记已删除`;
+      default: return null;
+    }
+  };
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 }}>
-      {actions.map((a, i) => (
-        <View key={i} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: T.greenSoft, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 5, marginRight: 6, marginTop: 4 }}>
-          <Ic name="check" size={11} color={T.green} stroke={2.4} />
-          <Text style={{ fontSize: 10.5, fontWeight: '700', color: T.green, marginLeft: 4 }}>
-            {a.name === 'add_todo' ? `已添加：${(a.args && a.args.text) || ''}` : a.name === 'complete_todo' ? `已完成：${(a.result && a.result.completed) || ''}` : a.name === 'update_profile' ? '画像已更新' : `${(a.args && a.args.course) || ''}笔记已更新`}
-          </Text>
-        </View>
-      ))}
+      {actions.map((a, i) => {
+        const txt = chipText(a);
+        if (!txt) return null;
+        const del = /^delete_/.test(a.name);
+        return (
+          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: del ? T.redSoft : T.greenSoft, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 5, marginRight: 6, marginTop: 4 }}>
+            <Ic name={del ? 'trash' : 'check'} size={11} color={del ? T.red : T.green} stroke={2.4} />
+            <Text style={{ fontSize: 10.5, fontWeight: '700', color: del ? T.red : T.green, marginLeft: 4 }}>{txt}</Text>
+          </View>
+        );
+      })}
     </View>
   );
 }

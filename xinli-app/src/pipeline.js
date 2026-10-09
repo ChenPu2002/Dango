@@ -2,7 +2,7 @@
  * 串行队列：queued→asr→llm(提取)→merge(合并记忆)→done，失败可重试，合并失败降级为直接追加 */
 import * as FS from 'expo-file-system/legacy';
 import { getState, setState, uid, parseDue, todayKeyISO } from './store';
-import { llmChat, asrRecognize, EXTRACT_SYS, MERGE_SYS, DAILY_SYS, REBUILD_SYS, parseExtractJson } from './api';
+import { llmChat, asrRecognize, EXTRACT_SYS, MERGE_SYS, DAILY_SYS, REBUILD_SYS, SEGMENT_SYS, MONTHLY_SYS, parseExtractJson } from './api';
 import { writeMemoryFile, clearMemoryFile } from './exporter';
 
 function patchJob(id, patch) {
@@ -25,6 +25,28 @@ async function pump() {
 }
 
 /* ---------- ① 提取（工作记忆 L1）---------- */
+/* 长文本分块：优先在句末断开，避免把一句话拦腰截断 */
+export function splitText(text, size) {
+  const s = String(text || '');
+  if (s.length <= size) return [s];
+  const chunks = [];
+  let i = 0;
+  while (i < s.length) {
+    let end = Math.min(i + size, s.length);
+    if (end < s.length) {
+      const tail = s.slice(i, end);
+      const cut = Math.max(tail.lastIndexOf('。'), tail.lastIndexOf('！'), tail.lastIndexOf('？'), tail.lastIndexOf('；'), tail.lastIndexOf('\n'));
+      if (cut > size * 0.4) end = i + cut + 1;
+    }
+    chunks.push(s.slice(i, end));
+    i = end;
+  }
+  return chunks;
+}
+
+const LONG_AUDIO_CHARS = 6500;   /* 超过此长度走分段提炼（约 20-30 分钟课堂） */
+const SEGMENT_CHARS = 5500;
+
 async function extractJob(job) {
   let content;
   if (job.kind === 'photo') {
@@ -37,7 +59,25 @@ async function extractJob(job) {
     const text = await FS.readAsStringAsync(job.uri);
     content = `提炼这份课程文档，直接输出 JSON：\n\n${text.slice(0, 50000)}`;
   } else {
-    content = `这是一段手机录音的转写文本（可能是课堂、小组讨论、语音日记），提炼为学习笔记，直接输出 JSON：\n\n${(job.asrText || '').slice(0, 80000)}`;
+    const full = (job.asrText || '').slice(0, 80000);
+    if (full.length > LONG_AUDIO_CHARS) {
+      /* 超长录音（如 2 小时课堂）：map-reduce —— 逐段提要点，再汇总成完整笔记 */
+      const segs = splitText(full, SEGMENT_CHARS);
+      const segNotes = [];
+      for (let k = 0; k < segs.length; k++) {
+        patchJob(job.id, { statusText: `长录音分段提炼 ${k + 1}/${segs.length}…` });
+        const out = await llmChat([
+          { role: 'system', content: SEGMENT_SYS },
+          { role: 'user', content: `录音第 ${k + 1}/${segs.length} 段：\n${segs[k]}` },
+        ], 900);
+        const d = parseExtractJson(out);
+        segNotes.push(`【第${k + 1}段 · ${d.title || ''}】\n${(d.points || []).map((p) => '- ' + p).join('\n')}${d.summary ? '\n段意：' + d.summary : ''}`);
+      }
+      patchJob(job.id, { statusText: '汇总分段要点…' });
+      content = `这是一段超长录音（共 ${segs.length} 段）的分段要点整理结果。请把它们综合成一份连贯完整的学习笔记，直接输出 JSON：\n\n${segNotes.join('\n\n')}`;
+    } else {
+      content = `这是一段手机录音的转写文本（可能是课堂、小组讨论、语音日记），提炼为学习笔记，直接输出 JSON：\n\n${full}`;
+    }
   }
   return parseExtractJson(await llmChat([
     { role: 'system', content: EXTRACT_SYS },
@@ -320,7 +360,8 @@ export function retryJob(id) {
   enqueueRun(id);
 }
 
-/* ---------- 夜间维护（后台定时 + 启动补跑）：周结压缩 + 文件清理 ---------- */
+/* ---------- 夜间维护（后台定时 + 启动补跑）：周结/月结压缩 + 记录瘦身 + 文件清理 ----------
+ * 记忆流转路径（防两个月冗余）：原始记录 →(14天)转写瘦身 →(60天)只留摘要；日结 →(周日)周结 →(月末)月结 */
 export async function nightlyMaintenance(force) {
   const st = getState();
   if (!force && Date.now() - (st.lastNightlyAt || 0) < 20 * 3600e3) return; // 20h 内跑过
@@ -345,6 +386,26 @@ export async function nightlyMaintenance(force) {
         did.push('周结');
       } catch (_) {}
     }
+    /* 2.5 月结：>30 天的周记 ≥3 条 → 压成月结并从周记中移除（第三层压缩） */
+    const oldWeeks = getState().weeklies.filter((w) => {
+      const last = String(w.range || '').split('-').pop();
+      const [m, dd] = last.split('.').map(Number);
+      return m && (now - new Date(now.getFullYear(), m - 1, dd)) > 30 * 864e5;
+    });
+    if (oldWeeks.length >= 3) {
+      try {
+        const out = await llmChat([{ role: 'system', content: MONTHLY_SYS },
+          { role: 'user', content: oldWeeks.map((w) => `[${w.range}] ${w.summary}`).join('\n') }], 500);
+        const mo = parseExtractJson(out);
+        const compressed = oldWeeks.map((w) => w.range);
+        setState((s2) => ({
+          ...s2,
+          monthlies: [{ range: oldWeeks[0].range.split('-')[0] + '-' + oldWeeks[oldWeeks.length - 1].range.split('-').pop(), summary: mo.summary || '' }, ...(s2.monthlies || [])].slice(0, 6),
+          weeklies: s2.weeklies.filter((w) => !compressed.includes(w.range)),
+        }));
+        did.push('月结');
+      } catch (_) {}
+    }
     /* 3. 已掌握卡片降温（同日结逻辑） */
     const t = Date.now();
     const cooled = getState().cards.filter((c) => c.status === 'active' && (c.box || 0) >= 2 && t - (c.updatedAt || c.createdAt || t) > 7 * 864e5).map((c) => c.id);
@@ -352,7 +413,28 @@ export async function nightlyMaintenance(force) {
       setState((s2) => ({ ...s2, cards: s2.cards.map((c) => (cooled.includes(c.id) ? { ...c, status: 'archived', archivedReason: '已掌握·7天未复习' } : c)) }));
       did.push('卡片降温' + cooled.length);
     }
-    /* 4. 旧记录瘦身：>7天的已完成录音删除音频文件（转写与提炼保留） */
+    /* 4. 旧记录瘦身（记忆分层的温度下降，搜索仍可命中摘要）：
+     *    >14 天：转写只留开头 300 字；>60 天：连提炼也只留标题+摘要，转写删除（深冷） */
+    let slimmed = 0, deepSlimmed = 0;
+    setState((s2) => ({
+      ...s2,
+      jobs: s2.jobs.map((j) => {
+        if (j.status !== 'done') return j;
+        const age = t - (j.createdAt || t);
+        if (age > 60 * 864e5 && !j.deepSlimmed) {
+          deepSlimmed++;
+          return { ...j, deepSlimmed: true, slimmed: true, asrText: '', extract: j.extract ? { title: j.extract.title, summary: j.extract.summary } : j.extract };
+        }
+        if (age > 14 * 864e5 && !j.slimmed && j.asrText && j.asrText.length > 300) {
+          slimmed++;
+          return { ...j, slimmed: true, asrText: j.asrText.slice(0, 300) + '……（已瘦身：完整转写已随周结/月结沉淀，或见导出文档）' };
+        }
+        return j;
+      }),
+    }));
+    if (slimmed) did.push('转写瘦身' + slimmed);
+    if (deepSlimmed) did.push('深冷归档' + deepSlimmed);
+    /* 5. 旧记录清理：>7天的已完成录音删除音频文件（转写与提炼保留） */
     let freed = 0;
     for (const j of getState().jobs) {
       if (j.status === 'done' && j.kind === 'audio' && j.uri && t - j.createdAt > 7 * 864e5) {
@@ -365,7 +447,15 @@ export async function nightlyMaintenance(force) {
     setState((s2) => ({ ...s2, lastNightlyAt: Date.now() }));
     try { await writeMemoryFile(); } catch (_) {}
     console.log('[dango] 🌙 夜间维护完成:', did.join('、') || '无需处理');
+    return did;
   } catch (e) { console.log('[dango] 夜间维护异常', String((e && e.message) || e).slice(0, 60)); }
+  return did;
+}
+
+/* 手动「整理记忆」入口（手帐页记忆分层卡）：日终归档 + 强制夜间维护 */
+export async function tidyMemory() {
+  await runArchivist();
+  return nightlyMaintenance(true);
 }
 
 /* ---------- 人工维护入口 ---------- */
@@ -379,6 +469,16 @@ export function archiveCard(id) { setState((s) => ({ ...s, cards: s.cards.map((c
 export function deleteCard(id) { setState((s) => ({ ...s, cards: s.cards.filter((c) => c.id !== id) })); }
 export function deleteTodo(id) { setState((s) => ({ ...s, todos: s.todos.filter((t) => t.id !== id) })); }
 export function editTodo(id, text) { setState((s) => ({ ...s, todos: s.todos.map((t) => (t.id === id ? { ...t, text } : t)) })); }
+/* 修改待办：文本与截止（due 传空串 = 清除截止；"周五/明天/11月2日" 等自然语言由 parseDue 归一化） */
+export function updateTodo(id, patch = {}) {
+  setState((s) => ({ ...s, todos: s.todos.map((t) => {
+    if (t.id !== id) return t;
+    const next = { ...t };
+    if (patch.text != null && String(patch.text).trim()) next.text = String(patch.text).trim();
+    if (patch.due !== undefined) { const { due, dueAt } = parseDue(String(patch.due || '')); next.due = due; next.dueAt = dueAt; }
+    return next;
+  }) }));
+}
 export function toggleTodo(id) { setState((s) => ({ ...s, todos: s.todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t)) })); }
 
 /* 删除一条记录（可选连带其生成内容）。

@@ -88,6 +88,10 @@ export function buildMemoryMd(st) {
   const wl = (st.weeklies || []).slice(0, 6);
   if (!wl.length) L.push('（暂无）');
   wl.forEach((w) => L.push(`- **${w.range}** ${w.summary}`));
+  L.push('\n## 🗄️ 月结\n');
+  const ml = (st.monthlies || []).slice(0, 6);
+  if (!ml.length) L.push('（暂无）');
+  ml.forEach((m) => L.push(`- **${m.range}** ${m.summary}`));
   L.push(`\n---\n*最后更新：${new Date().toLocaleString('zh-CN')}*\n`);
   return L.join('\n');
 }
