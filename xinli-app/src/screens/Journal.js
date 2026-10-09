@@ -260,24 +260,25 @@ export default function Journal({ toast, goAsk }) {
                   </Card>
                 )}
               </ScrollView>
-              <View style={{ flexDirection: 'row', paddingHorizontal: 0, paddingBottom: 26, paddingTop: 8 }}>
+              {/* 底部操作区：等宽主次布局——主操作实心，次操作白底描边，危险操作红描边 */}
+              <View style={{ flexDirection: 'row', paddingBottom: 26, paddingTop: 8 }}>
                 {reader.editable ? (
                   editing ? (
                     <>
-                      <Btn text="保存" onPress={saveEdit} style={{ flex: 1, marginRight: 8 }} />
-                      <Btn text="取消" tone="danger" onPress={() => setEditing(false)} style={{ flex: 1 }} />
+                      <Btn text="保存" icon="check" onPress={saveEdit} style={{ flex: 1, marginRight: 8 }} />
+                      <Btn text="取消" variant="ghost" onPress={() => setEditing(false)} style={{ flex: 1 }} />
                     </>
                   ) : (
                     <>
-                      <Btn text="编辑" onPress={() => { setDraft(reader.body || ''); setEditing(true); }} style={{ flex: 1, marginRight: 8 }} />
-                      <Btn text="问团团" onPress={() => { const q2 = `关于「${reader.title}」：`; setReader(null); goAsk(q2); }} style={{ flex: 1 }} />
+                      <Btn text="编辑" icon="pencil" onPress={() => { setDraft(reader.body || ''); setEditing(true); }} style={{ flex: 1, marginRight: 8 }} />
+                      <Btn text="问团团" icon="chat" variant="ghost" onPress={() => { const q2 = `关于「${reader.title}」：`; setReader(null); goAsk(q2); }} style={{ flex: 1 }} />
                     </>
                   )
                 ) : (
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Btn text="就此文档问团团" onPress={() => { const q2 = `关于「${reader.title}」：`; setReader(null); goAsk(q2); }} style={{ flex: 1, marginRight: 8 }} />
+                  <>
+                    <Btn text="问团团" icon="chat" onPress={() => { const q2 = `关于「${reader.title}」：`; setReader(null); goAsk(q2); }} style={{ flex: 1, marginRight: 8 }} />
                     {reader.type === 'archive' && reader.job ? (
-                      <Btn text="删除" tone="danger" onPress={() => Alert.alert('删除这条记录？', '将一并删除其衍生的卡片、待办、心情、云文档，并从剩余记录重建课程笔记与画像（隐私级联）', [
+                      <Btn text="删除" icon="trash" tone="danger" variant="ghost" style={{ flex: 1 }} onPress={() => Alert.alert('删除这条记录？', '将一并删除其衍生的卡片、待办、心情、云文档，并从剩余记录重建课程笔记与画像（隐私级联）', [
                         { text: '取消', style: 'cancel' },
                         { text: '删除并清除衍生', style: 'destructive', onPress: async () => {
                           const jid = reader.job.id;
@@ -287,7 +288,7 @@ export default function Journal({ toast, goAsk }) {
                         } },
                       ])} />
                     ) : null}
-                  </View>
+                  </>
                 )}
               </View>
             </View>

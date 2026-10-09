@@ -62,17 +62,21 @@ export function SwitchMIUI({ on, onChange }) {
   );
 }
 
-export function Btn({ text, onPress, tone, style }) {
+/* 操作按钮：variant=solid 主操作（实心）/ ghost 次操作（白底描边）；tone=danger 红色系 */
+export function Btn({ text, onPress, tone, variant = 'solid', icon, style }) {
   const danger = tone === 'danger';
+  const ghost = variant === 'ghost';
+  const fg = ghost ? (danger ? T.red : T.orange) : '#fff';
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [
       {
-        borderRadius: 14, paddingVertical: 12, alignItems: 'center',
-        backgroundColor: danger ? T.redSoft : T.orange,
-        borderWidth: danger ? 1 : 0, borderColor: '#F5B8B0',
+        borderRadius: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: ghost ? '#FFFFFF' : danger ? T.red : T.orange,
+        borderWidth: ghost ? 1.5 : 0, borderColor: danger ? '#F0C4BE' : '#FFD9BC',
       }, pressed && { opacity: 0.7 }, style,
     ]}>
-      <Text style={{ color: danger ? T.red : '#fff', fontSize: 14, fontWeight: '700' }}>{text}</Text>
+      {icon ? <View style={{ marginRight: 6 }}><Ic name={icon} size={15} color={fg} stroke={2} /></View> : null}
+      <Text style={{ color: fg, fontSize: 14, fontWeight: '700' }}>{text}</Text>
     </Pressable>
   );
 }
@@ -124,18 +128,20 @@ export function Toast({ msg }) {
   );
 }
 
-/* MIUI 底部弹层 */
+/* MIUI 底部弹层（translucent flags 让 Android 键盘 resize 正确作用于 Modal，避免输入框被挡） */
 export function Sheet({ visible, onClose, children }) {
   const { height } = Dimensions.get('window');
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,.4)', justifyContent: 'flex-end' }} onPress={onClose}>
-        <Pressable style={{ backgroundColor: T.bg, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: height * 0.82 }} onPress={() => {}}>
-          <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 2 }}>
-            <View style={{ width: 38, height: 4.5, borderRadius: 99, backgroundColor: '#DFE2E7' }} />
-          </View>
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 34 }}><KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>{children}</KeyboardAvoidingView></ScrollView>
-        </Pressable>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ backgroundColor: T.bg, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: height * 0.82 }}>
+          <Pressable style={{ flex: 0 }} onPress={() => {}}>
+            <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 2 }}>
+              <View style={{ width: 38, height: 4.5, borderRadius: 99, backgroundColor: '#DFE2E7' }} />
+            </View>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 34 }} nestedScrollEnabled>{children}</ScrollView>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Pressable>
     </Modal>
   );

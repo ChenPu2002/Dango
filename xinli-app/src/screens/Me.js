@@ -106,7 +106,7 @@ export default function Me({ toast, go }) {
           <Divider />
           <Row icon="box" iconBg={T.greenSoft} iconColor={T.green} title="占用空间" sub="音频/照片/文档均为本地存储" right={<Text style={{ fontSize: 12, color: T.sub }}>{totalKB > 1024 ? (totalKB / 1024).toFixed(1) + ' MB' : totalKB.toFixed(0) + ' KB'}</Text>} />
         </Card>
-        <Btn text="清空全部数据" tone="danger" onPress={clearAll} style={{ marginTop: 14 }} />
+        <Btn text="清空全部数据" tone="danger" variant="ghost" onPress={clearAll} style={{ marginTop: 14 }} />
       </Section>
 
       <Section title="关于">

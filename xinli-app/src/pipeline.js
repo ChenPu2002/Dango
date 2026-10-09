@@ -257,9 +257,6 @@ async function maybeDailyRollup() {
   try {
     const st = getState();
     if (st.jobs.some((j) => ['queued', 'asr', 'llm', 'merge'].includes(j.status))) return; // 还有在处理的
-    const now = new Date();
-    const key = `${now.getMonth() + 1}.${now.getDate()}`;
-    const todayJobs = st.jobs.filter((j) => j.status === 'done' && new Date(j.createdAt).toDateString() === now.toDateString());
     /* 卡片降温：已掌握(box≥2) 且 7 天未更新 → 归档（记忆不无限膨胀） */
     const t = Date.now();
     const cooled = st.cards.filter((c) => c.status === 'active' && (c.box || 0) >= 2 && t - (c.updatedAt || c.createdAt || t) > 7 * 86400000).map((c) => c.id);
@@ -267,12 +264,21 @@ async function maybeDailyRollup() {
       setState((s2) => ({ ...s2, cards: s2.cards.map((c) => (cooled.includes(c.id) ? { ...c, status: 'archived', archivedReason: '已掌握·7天未复习' } : c)) }));
       console.log('[dango] ❄️ 卡片降温归档', cooled.length, '张');
     }
-    if (!todayJobs.length || st.dailies.some((d) => d.date === key)) return;
-    const input = todayJobs.slice(0, 15).map((j) => `【${(j.extract && j.extract.title) || j.title}】${((j.extract && j.extract.summary) || '').slice(0, 80)}`).join('\n');
-    const out = await llmChat([{ role: 'system', content: DAILY_SYS }, { role: 'user', content: input }], 300);
-    const d = parseExtractJson(out);
-    setState((s2) => ({ ...s2, dailies: [{ date: key, summary: d.summary || '', emoji: d.emoji || '🌤️', n: todayJobs.length }, ...s2.dailies].slice(0, 7) }));
-    console.log('[dango] 📅 日结', key, d.emoji, (d.summary || '').slice(0, 40));
+    /* 按天补缺失的日结（不止今天：某天没开 App，那天的日结也能在下次启动补上；最多补 3 天防爆量） */
+    const byDay = {};
+    st.jobs.filter((j) => j.status === 'done').forEach((j) => {
+      const d = new Date(j.createdAt);
+      const key = `${d.getMonth() + 1}.${d.getDate()}`;
+      if (!st.dailies.some((x) => x.date === key)) (byDay[key] = byDay[key] || []).push(j);
+    });
+    const missing = Object.keys(byDay).sort((a, b) => b.localeCompare(a)).slice(0, 3);
+    for (const key of missing) {
+      const input = byDay[key].slice(0, 15).map((j) => `【${(j.extract && j.extract.title) || j.title}】${((j.extract && j.extract.summary) || '').slice(0, 80)}`).join('\n');
+      const out = await llmChat([{ role: 'system', content: DAILY_SYS }, { role: 'user', content: input }], 300);
+      const d = parseExtractJson(out);
+      setState((s2) => ({ ...s2, dailies: [{ date: key, summary: d.summary || '', emoji: d.emoji || '🌤️', n: byDay[key].length }, ...s2.dailies.filter((x) => x.date !== key)].slice(0, 7) }));
+      console.log('[dango] 📅 日结', key, d.emoji, (d.summary || '').slice(0, 40));
+    }
   } catch (e) { console.log('[dango] 日结失败', String((e && e.message) || e).slice(0, 60)); }
 }
 

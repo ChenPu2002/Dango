@@ -174,6 +174,13 @@ export default function Ask({ toast, prefill, clearPrefill }) {
     }
   }, [cur && cur.id]);
 
+  /* 空会话不保留：没发过消息的会话，在启动/切走/关抽屉时清掉（keepId=正在使用的那个） */
+  const pruneEmpty = (keepId) => setState((st) => {
+    const kept = st.sessions.filter((se) => (se.messages || []).length || se.id === keepId);
+    return kept.length ? { ...st, sessions: kept } : st;
+  });
+  useEffect(() => { if (cur) pruneEmpty(cur.id); /* eslint-disable-line */ }, []);
+
   useEffect(() => { if (prefill) { setQ(prefill); clearPrefill(); } }, [prefill]);
 
   useEffect(() => {
@@ -208,7 +215,8 @@ export default function Ask({ toast, prefill, clearPrefill }) {
 
   const newSession = () => {
     const id = uid();
-    setState((st) => ({ ...st, sessions: [{ id, title: '新对话', createdAt: Date.now(), updatedAt: Date.now(), messages: [] }, ...st.sessions], currentSessionId: id }));
+    /* 新建时顺带清掉旧的空会话（连点新建不留一串空白记录） */
+    setState((st) => ({ ...st, sessions: [{ id, title: '新对话', createdAt: Date.now(), updatedAt: Date.now(), messages: [] }, ...st.sessions.filter((se) => (se.messages || []).length)], currentSessionId: id }));
     setDrawer(false);
     setQ('');
   };
@@ -294,10 +302,10 @@ export default function Ask({ toast, prefill, clearPrefill }) {
       </KeyboardAvoidingView>
 
       <SessionDrawer
-        visible={drawer} onClose={() => setDrawer(false)}
+        visible={drawer} onClose={() => { setDrawer(false); if (cur) pruneEmpty(cur.id); }}
         sessions={sessions} currentId={s.currentSessionId}
         onNew={newSession}
-        onSwitch={(id) => setState((st) => ({ ...st, currentSessionId: id }))}
+        onSwitch={(id) => { setState((st) => ({ ...st, currentSessionId: id })); pruneEmpty(id); }}
         onDelete={(se) => setDelTarget(se)}
       />
       <ActionSheet visible={!!delTarget} onClose={() => setDelTarget(null)} title={delTarget ? (delTarget.title || '新对话') : ''}
