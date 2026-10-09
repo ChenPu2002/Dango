@@ -6,7 +6,7 @@ import { Ic } from '../icons';
 import { T } from '../theme';
 import { useStore, setState, fmtDate } from '../store';
 import { writeMemoryFile, exportAll, ensureExportDir } from '../exporter';
-import { deleteJob, tidyMemory } from '../pipeline';
+import { deleteJob, tidyMemory, migrateLegacyCasual } from '../pipeline';
 
 /* 图标配色：不同文档类型的柔和底色（颜色即分组语义：橙=学习材料，紫=生活面，绿=小结） */
 const DOC_STYLE = {
@@ -180,6 +180,14 @@ export default function Journal({ toast, goAsk }) {
   const noteMenuSheet = (
     <ActionSheet visible={!!noteMenu} onClose={() => setNoteMenu(null)} title={noteMenu ? noteMenu.title : ''}
       options={noteMenu ? [
+        ...(noteMenu.type === 'casual' ? [{ icon: 'sync', label: '分拣归档（约定→待办 · 学情→画像）', onPress: () => {
+          setNoteMenu(null);
+          toast('分拣中…');
+          migrateLegacyCasual().then((ok) => {
+            setReader(null);
+            toast(ok ? '已分拣：约定进待办、学情进画像，笔记已归档' : '没有可分拣的日常笔记');
+          }).catch(() => toast('分拣失败，稍后再试'));
+        } }] : []),
         { icon: 'pencil', label: '重命名（改变归属）', onPress: () => setRename(noteMenu) },
         { icon: 'trash', label: '删除这份笔记', tone: 'danger', onPress: () => {
           const name = noteMenu.course;
