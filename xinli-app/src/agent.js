@@ -2,7 +2,7 @@
  * 工具循环：LLM 决策 → 本地执行工具 → 结果回填 → 再决策（≤8轮）→ 最终回答
  * 执行轨迹实时上抛（onStep），支持取消 */
 import { getState, setState, uid, parseDue, todayKeyISO, dueLabel } from './store';
-import { llmChatRaw } from './api';
+import { llmChatRaw, llmChat } from './api';
 import { writeMemoryFile } from './exporter';
 
 /* ---------- 工具目录（JSON Schema）----------
@@ -12,6 +12,7 @@ export const TOOLS = [
   { type: 'function', function: { name: 'web_fetch', description: '抓取网页正文（配合 web_search 结果深入阅读）', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } } },
   { type: 'function', function: { name: 'search_memory', description: '关键词检索全部记忆（基于提炼层：摘要/关键点/笔记/卡片，已纠错；原始转写需用户明确要求才用 read_transcript 读）', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词' }, scope: { type: 'string', enum: ['all', 'transcripts', 'notes', 'todos', 'dailies'] } }, required: ['query'] } } },
   { type: 'function', function: { name: 'read_transcript', description: '读取指定记录的完整转写原文', parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } } },
+  { type: 'function', function: { name: 'conversation_history', description: '读取当前会话被压缩前的完整原文（摘要有损时的兜底，Eta 同款）', parameters: { type: 'object', properties: { from: { type: 'number', description: '从第几条开始，默认 0' } } } } },
   { type: 'function', function: { name: 'list_records', description: '枚举最近的记录（含标题/时间/摘要）', parameters: { type: 'object', properties: { days: { type: 'number', description: '最近N天，默认7' } } } } },
   { type: 'function', function: { name: 'read_course_note', description: '读取某课程完整笔记', parameters: { type: 'object', properties: { course: { type: 'string' } }, required: ['course'] } } },
   { type: 'function', function: { name: 'list_courses', description: '列出全部课程笔记目录（课程名+字数+更新时间）' } },
@@ -138,6 +139,17 @@ export async function executeTool(name, args) {
       if (!j) return { error: '记录不存在' };
       return { id: j.id, title: (j.extract && j.extract.title) || j.title, createdAt: new Date(j.createdAt).toLocaleString('zh-CN'), transcript: String(j.asrText || '').slice(0, 3000) };
     }
+    case 'conversation_history': {
+      const cur = (st.sessions || []).find((x) => x.id === st.currentSessionId);
+      const upto = (cur && cur.compactUpto) || 0;
+      const msgs = ((cur && cur.messages) || []).slice(0, upto);
+      const from = A.from || 0;
+      const page = msgs.slice(from, from + 8);
+      return {
+        total: msgs.length, from, next: from + 8 < msgs.length ? from + 8 : null,
+        messages: page.map((c) => ({ q: c.q, a: String(c.a || '').slice(0, 600) })),
+      };
+    }
     case 'list_records': {
       const days = A.days || 7;
       const since = Date.now() - days * 86400000;
@@ -259,20 +271,37 @@ export async function executeTool(name, args) {
 export const todayStr = todayKeyISO;
 
 /* ---------- Agent Loop ---------- */
-/* 会话历史注入：最近 N 轮（答截 300 字）——有界，保证多轮关联而不膨胀 */
-function buildHistory(prior, n = 6) {
-  return (prior || []).slice(-n).flatMap((c) => {
-    const rows = [{ role: 'user', content: c.q }];
-    if (c.a) rows.push({ role: 'assistant', content: String(c.a).slice(0, 300) });
-    return rows;
+/* 会话历史注入（Eta 式）：全量历史不截断；防爆靠压缩——
+ * 按服务商实际返回的 prompt_tokens 达窗口 85% 触发，摘要作为带说明的 assistant 历史，
+ * 原文始终保留在 session.messages（journal 语义），conversation_history 工具可回查原文 */
+function buildHistory(prior, summary, upto) {
+  const rows = [];
+  if (summary) rows.push({ role: 'assistant', content: `（此前对话的摘要，原文可用 conversation_history 工具查询）\n${summary}` });
+  (prior || []).slice(upto || 0).forEach((c) => {
+    rows.push({ role: 'user', content: c.q });
+    if (c.a) rows.push({ role: 'assistant', content: String(c.a) });
   });
+  return rows;
 }
 
-export async function runAgent(question, { onStep, cancelled, prior } = {}) {
+/* 压缩：旧轮次 → 一段摘要（Eta 规则：摘要请求禁工具；失败保留原文不降级） */
+async function compactHistory(prior, upto) {
+  const text = (prior || []).slice(0, upto).map((c) => `用户：${c.q}\n团团：${String(c.a || '').slice(0, 800)}`).join('\n\n');
+  const out = await llmChat([
+    { role: 'system', content: '把这段对话历史压缩成一份摘要，保留：用户的核心诉求与偏好、已完成的操作（如添加的待办/卡片）、重要结论与未决事项。只输出摘要正文。' },
+    { role: 'user', content: text.slice(0, 60000) },
+  ], 800);
+  const s = String(out || '').trim();
+  /* 完整且确实缩小才提交（Eta：空/截断/超长摘要一律保留原文） */
+  if (!s || s.length < 20 || s.length >= text.length) throw new Error('摘要无效，保留原文');
+  return s;
+}
+
+export async function runAgent(question, { onStep, cancelled, prior, summary, upto, onCompact } = {}) {
   const st = getState();
   const messages = [
     { role: 'system', content: `${AGENT_SYS}\n\n${buildIndex(st)}` },
-    ...buildHistory(prior),
+    ...buildHistory(prior, summary, upto),
     { role: 'user', content: question },
   ];
   const steps = [];
@@ -281,10 +310,28 @@ export async function runAgent(question, { onStep, cancelled, prior } = {}) {
   const ac = new AbortController();
   const cancelWatch = setInterval(() => { if (cancelled && cancelled()) ac.abort(); }, 300);
   const isCancelled = () => !!(cancelled && cancelled());
+  /* 压缩阈值：实际输入用量 ≥ 窗口 85%（窗口可配，默认 128K；绝不估算——只信 usage.prompt_tokens） */
+  const window = (st.settings && st.settings.contextWindow) || 128000;
+  const shouldCompact = (resp) => {
+    const used = resp && resp.usage && resp.usage.prompt_tokens;
+    return used && used >= window * 0.85 && (prior || []).length > (upto || 0) + 2 && !summary;
+  };
   try {
     for (let turn = 0; turn < 8; turn++) {
       if (isCancelled()) throw new Error('已取消');
       const resp = await llmChatRaw(messages, TOOLS, 1500, ac.signal);
+      /* 完整工具批次结束后、下一次请求前触发压缩（Eta 时机） */
+      if (shouldCompact(resp)) {
+        try {
+          const keep = 4; /* 保留最近几轮原文，其余摘要（有界失败安全） */
+          const newUpto = Math.max((upto || 0), (prior || []).length - keep);
+          if (newUpto > (upto || 0)) {
+            const s = await compactHistory(prior, newUpto);
+            onCompact && onCompact({ summary: s, upto: newUpto });
+            messages.splice(1, 0, { role: 'assistant', content: `（此前对话的摘要，原文可用 conversation_history 工具查询）\n${s}` });
+          }
+        } catch (_) { /* 压缩失败保留原文，本轮继续 */ }
+      }
       const msg = resp.choices && resp.choices[0] && resp.choices[0].message;
       if (!msg) throw new Error('LLM 响应异常');
       const calls = msg.tool_calls || [];
@@ -302,7 +349,7 @@ export async function runAgent(question, { onStep, cancelled, prior } = {}) {
         steps.push(step);
         onStep && onStep([...steps]);
         if (/^(add_|complete_|update_|delete_|reopen_|archive_)/.test(tc.function.name)) actions.push({ name: tc.function.name, args, result });
-        /* 上下文预算：单工具结果 1500 字（检索已默认喂提炼层，原始转写仅在 read_transcript 显式读取） */
+        /* 上下文预算：单工具结果 1500 字（检索默认喂提炼层，原始转写仅 read_transcript 显式读取） */
         messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result).slice(0, 1500) });
       }
     }
@@ -324,6 +371,7 @@ function briefOf(name, args, result) {
       case 'web_fetch': return `读取网页「${(result && result.title) || args.url}」`;
       case 'search_memory': return `检索“${args.query}” → 命中 ${result.total || 0} 条`;
       case 'read_transcript': return `读取档案「${(result && result.title) || args.id}」`;
+      case 'conversation_history': return `回查会话原文 ${result && result.total ? result.total + ' 条' : ''}`;
       case 'list_records': return `列出最近记录 ${Array.isArray(result) ? result.length : 0} 条`;
       case 'read_course_note': return `读取课程笔记「${(result && result.course) || args.course}」`;
       case 'list_courses': return `查看课程目录 ${Array.isArray(result) ? result.length : 0} 门`;
@@ -380,6 +428,8 @@ export function humanizeResult(name, result) {
         ]);
       case 'read_transcript':
         return line([`〔${R.title}〕${R.createdAt || ''}`, R.transcript]);
+      case 'conversation_history':
+        return line([`共 ${R.total} 条（本页自第 ${R.from} 条）`, ...(R.messages || []).map((m) => `用户：${m.q}\n团团：${m.a}`)]);
       case 'list_records':
         return (Array.isArray(R) ? R : []).map((j, i) => `${i + 1}. ${j.date}〔${{ audio: '录音', photo: '照片', doc: '文档' }[j.kind] || j.kind}〕${j.title}${j.summary ? '\n　' + j.summary : ''}`).join('\n');
       case 'read_course_note':

@@ -23,11 +23,18 @@ export async function llmChat(messages) {
   if (sys.includes('每日整理器')) return '{"summary":"（mock日结）今天学了泰勒公式并整理笔记","emoji":"🌤️"}';
   if (sys.includes('待办管家')) return '{"decisions":[]}';
   if (sys.includes('分拣员')) return '{"todos":[{"text":"和室友晚上十点拿快递","due":"今晚"}],"profile_facts":["数据结构吃力，需投入更多时间"]}';
+  if (sys.includes('压缩成一份摘要')) return '（mock摘要）用户在测试团子对话：问过待办、心情与卡片，要求添加并修改过待办。';
   return '{}';
 }
 
+/* usage 高于窗口 85% → 触发压缩路径 */
+let rawCallCount = 0;
 export async function llmChatRaw() {
-  return { choices: [{ message: { content: '（mock 回答）', tool_calls: [] } }] };
+  rawCallCount += 1;
+  return {
+    choices: [{ message: { content: '（mock 回答）', tool_calls: [] } }],
+    usage: { prompt_tokens: 120000, completion_tokens: 10, total_tokens: 120010 },
+  };
 }
 
 export async function asrRecognize() { return { text: '（mock 转写）' }; }

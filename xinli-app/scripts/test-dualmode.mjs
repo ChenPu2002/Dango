@@ -1,7 +1,7 @@
 /* 双场景录音 + 日常迁移 + 联网工具 验证（mock LLM 跑真代码；web_fetch 真联网）
  * 用法：node --import ./scripts/register-mockllm.mjs scripts/test-dualmode.mjs */
 const { initStore, getState, setState } = await import('../src/store.js');
-const { executeTool, humanizeResult, TOOLS } = await import('../src/agent.js');
+const { executeTool, humanizeResult, TOOLS, runAgent } = await import('../src/agent.js');
 const { migrateLegacyCasual } = await import('../src/pipeline.js');
 const { EXTRACT_SYS_CLASS, EXTRACT_SYS_CASUAL, SEGMENT_SYS, MERGE_SYS } = await import('../src/api.js');
 
@@ -42,6 +42,19 @@ check('web_fetch 结果人读化', hw.includes('http'));
 const ws = await executeTool('web_search', { query: 'test' });
 check('web_search 不抛异常（成功或明确 error）', !!(ws.results || ws.error), ws.error || `engine=${ws.engine} n=${(ws.results || []).length}`);
 check('web_search 已注册到工具目录', TOOLS.some((t) => t.function.name === 'web_search') && TOOLS.some((t) => t.function.name === 'web_fetch'));
+
+/* ---- ④ Eta 式上下文压缩：实际 usage ≥ 窗口 85% 触发，保留最近 4 轮原文 ---- */
+const prior8 = Array.from({ length: 8 }, (_, i) => ({ id: `p${i}`, q: `第${i + 1}个问题：待办和卡片怎么用`, a: `第${i + 1}个回答：${'关于待办与卡片的说明。'.repeat(10)}`, steps: [], actions: [], at: Date.now() }));
+let compacted = null;
+await runAgent('再问一个', {
+  prior: prior8, upto: 0,
+  onCompact: (p) => { compacted = p; },
+});
+check('85% 用量触发压缩：生成摘要且保留最近 4 轮（upto=4）', !!compacted && compacted.upto === 4 && compacted.summary.length > 10, compacted ? `upto=${compacted.upto} summary=${compacted.summary.slice(0, 20)}…` : '未触发');
+const noCompact = { v: null };
+setState(() => getState()); /* 不变 */
+await runAgent('短历史不压缩', { prior: prior8.slice(0, 2), upto: 0, onCompact: (p) => { noCompact.v = p; } });
+check('历史不足时即使超阈值也不压缩', noCompact.v === null);
 
 console.log(fail ? `\n❌ ${fail} 项失败` : '\n全部通过 🎉');
 process.exit(fail ? 1 : 0);

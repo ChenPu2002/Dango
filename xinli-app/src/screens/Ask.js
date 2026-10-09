@@ -197,8 +197,8 @@ export default function Ask({ toast, prefill, clearPrefill }) {
     sessions: st.sessions.map((se) => (se.id === cur.id ? { ...fn(se), updatedAt: Date.now() } : se)),
   }));
 
-  /* 发送与重新生成共用一条执行管线；prior = 本会话历史（最近轮次拼进上下文，保证多轮关联） */
-  const runOne = async (chatId, question, prior) => {
+  /* 发送与重新生成共用一条执行管线（Eta 式上下文：全量历史 + 85% 窗口压缩 + 原文可回查） */
+  const runOne = async (chatId, question, prior, ctx = {}) => {
     setRunning(true);
     setStopping(false);
     cancelRef.current = false;
@@ -207,6 +207,9 @@ export default function Ask({ toast, prefill, clearPrefill }) {
         onStep: (newSteps) => patchCur((se) => ({ ...se, messages: se.messages.map((c) => (c.id === chatId ? { ...c, steps: newSteps } : c)) })),
         cancelled: () => cancelRef.current,
         prior,
+        summary: ctx.summary,
+        upto: ctx.upto,
+        onCompact: (patch) => patchCur((se) => ({ ...se, summary: patch.summary, compactUpto: patch.upto })),
       });
       patchCur((se) => ({ ...se, messages: se.messages.map((c) => (c.id === chatId ? { ...c, a: answer, steps, actions } : c)) }));
     } catch (e) {
@@ -222,16 +225,18 @@ export default function Ask({ toast, prefill, clearPrefill }) {
     setQ('');
     const chatId = uid();
     const prior = cur.messages || [];
+    const ctx = { summary: cur.summary, upto: cur.compactUpto || 0 };
     patchCur((se) => ({ ...se, title: se.messages.length ? se.title : question.slice(0, 14), messages: [...se.messages, { id: chatId, q: question, a: '', steps: [], actions: [], at: Date.now() }] }));
-    runOne(chatId, question, prior);
+    runOne(chatId, question, prior, ctx);
   };
 
   /* ETA 式消息操作：长按消息 → 重新生成 / 删除这轮 */
   const regen = (c) => {
     if (running || !c.a) return;
     const prior = (cur.messages || []).filter((x) => x.id !== c.id);
+    const ctx = { summary: cur.summary, upto: cur.compactUpto || 0 };
     patchCur((se) => ({ ...se, messages: se.messages.map((x) => (x.id === c.id ? { ...x, a: '', steps: [], actions: [] } : x)) }));
-    runOne(c.id, c.q, prior);
+    runOne(c.id, c.q, prior, ctx);
   };
   const dropMsg = (c) => {
     patchCur((se) => ({ ...se, messages: se.messages.filter((x) => x.id !== c.id) }));
