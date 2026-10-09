@@ -262,7 +262,25 @@ function TodayCards() {
   const active = s.cards.filter((c) => c.status === 'active');
   const fresh = active.filter((c) => new Date(c.createdAt).toDateString() === today);
   const grade = (c, up) => setState((st) => ({ ...st, cards: st.cards.map((x) => (x.id === c.id ? { ...x, box: up ? (x.box || 0) + 1 : 0 } : x)) }));
-  if (!active.length) return null;
+  /* 空状态也是入口：0 张卡时引导录课产卡，而不是让功能消失 */
+  if (!active.length) {
+    return (
+      <Card>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ fontSize: 15, fontWeight: '800', color: T.text, flex: 1 }}>复习卡片</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, backgroundColor: '#FBF6EF', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13 }}>
+          <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: T.orangeSoft, alignItems: 'center', justifyContent: 'center', marginRight: 11 }}>
+            <Ic name="doc" size={16} color={T.orangeDeep} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13.5, fontWeight: '700', color: T.text }}>还没有卡片</Text>
+            <Text style={{ fontSize: 11, color: T.sub, marginTop: 1 }}>录一段课或拍板书，团团会把知识点做成翻卡</Text>
+          </View>
+        </View>
+      </Card>
+    );
+  }
   /* 常驻入口：有新卡展示今日 deck；没有新卡也保留「在册卡片」入口（入口消失 = 功能消失） */
   return (
     <Card>
