@@ -14,8 +14,8 @@ export async function llmChat(messages, maxTokens = 2200) {
   return j.choices[0].message.content;
 }
 
-/* Agent 用：带 tools 的原始调用，返回完整响应（含 tool_calls） */
-export async function llmChatRaw(messages, tools, maxTokens = 1500) {
+/* Agent 用：带 tools 的原始调用，返回完整响应（含 tool_calls）；支持 AbortSignal（停止按钮立即掐断） */
+export async function llmChatRaw(messages, tools, maxTokens = 1500, signal) {
   const { llmUrl, llmKey, llmModel } = getState().settings;
   const body = { model: llmModel, messages, max_tokens: maxTokens };
   if (tools) body.tools = tools;
@@ -23,6 +23,7 @@ export async function llmChatRaw(messages, tools, maxTokens = 1500) {
     method: 'POST',
     headers: { Authorization: `Bearer ${llmKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   });
   const j = await r.json();
   if (j.error) throw new Error(j.error.message || 'LLM 错误');

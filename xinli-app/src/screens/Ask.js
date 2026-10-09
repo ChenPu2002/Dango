@@ -161,6 +161,7 @@ export default function Ask({ toast, prefill, clearPrefill }) {
   const [drawer, setDrawer] = useState(false);
   const [delTarget, setDelTarget] = useState(null);
   const [msgMenu, setMsgMenu] = useState(null);
+  const [stopping, setStopping] = useState(false);
   const cancelRef = useRef(false);
   const scrollRef = useRef(null);
   const sessions = s.sessions || [];
@@ -196,20 +197,23 @@ export default function Ask({ toast, prefill, clearPrefill }) {
     sessions: st.sessions.map((se) => (se.id === cur.id ? { ...fn(se), updatedAt: Date.now() } : se)),
   }));
 
-  /* 发送与重新生成共用一条执行管线 */
-  const runOne = async (chatId, question) => {
+  /* 发送与重新生成共用一条执行管线；prior = 本会话历史（最近轮次拼进上下文，保证多轮关联） */
+  const runOne = async (chatId, question, prior) => {
     setRunning(true);
+    setStopping(false);
     cancelRef.current = false;
     try {
       const { answer, steps, actions } = await runAgent(question, {
         onStep: (newSteps) => patchCur((se) => ({ ...se, messages: se.messages.map((c) => (c.id === chatId ? { ...c, steps: newSteps } : c)) })),
         cancelled: () => cancelRef.current,
+        prior,
       });
       patchCur((se) => ({ ...se, messages: se.messages.map((c) => (c.id === chatId ? { ...c, a: answer, steps, actions } : c)) }));
     } catch (e) {
       patchCur((se) => ({ ...se, messages: se.messages.map((c) => (c.id === chatId ? { ...c, a: '出错: ' + String((e && e.message) || e).slice(0, 60) } : c)) }));
     }
     setRunning(false);
+    setStopping(false);
   };
 
   const send = async (text) => {
@@ -217,15 +221,17 @@ export default function Ask({ toast, prefill, clearPrefill }) {
     if (!question || running || !cur) return;
     setQ('');
     const chatId = uid();
+    const prior = cur.messages || [];
     patchCur((se) => ({ ...se, title: se.messages.length ? se.title : question.slice(0, 14), messages: [...se.messages, { id: chatId, q: question, a: '', steps: [], actions: [], at: Date.now() }] }));
-    runOne(chatId, question);
+    runOne(chatId, question, prior);
   };
 
   /* ETA 式消息操作：长按消息 → 重新生成 / 删除这轮 */
   const regen = (c) => {
     if (running || !c.a) return;
+    const prior = (cur.messages || []).filter((x) => x.id !== c.id);
     patchCur((se) => ({ ...se, messages: se.messages.map((x) => (x.id === c.id ? { ...x, a: '', steps: [], actions: [] } : x)) }));
-    runOne(c.id, c.q);
+    runOne(c.id, c.q, prior);
   };
   const dropMsg = (c) => {
     patchCur((se) => ({ ...se, messages: se.messages.filter((x) => x.id !== c.id) }));
@@ -311,8 +317,9 @@ export default function Ask({ toast, prefill, clearPrefill }) {
             onSubmitEditing={() => send()} returnKeyType="send"
             style={{ flex: 1, fontSize: 13.5, color: T.text, backgroundColor: '#fff', borderRadius: 99, paddingHorizontal: 16, paddingVertical: 11, ...T.shadow }} />
           {running ? (
-            <Pressable onPress={() => { cancelRef.current = true; }} style={{ marginLeft: 10, backgroundColor: T.redSoft, borderWidth: 1.5, borderColor: '#F0C4BE', borderRadius: 99, paddingHorizontal: 16, paddingVertical: 11 }}>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: T.red }}>停止</Text>
+            <Pressable onPress={() => { if (!stopping) { setStopping(true); cancelRef.current = true; } }} disabled={stopping}
+              style={({ pressed }) => [{ marginLeft: 10, backgroundColor: T.redSoft, borderWidth: 1.5, borderColor: '#F0C4BE', borderRadius: 99, paddingHorizontal: 16, paddingVertical: 11, opacity: stopping ? 0.5 : 1 }, pressed && { opacity: 0.7 }]}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: T.red }}>{stopping ? '停止中…' : '停止'}</Text>
             </Pressable>
           ) : (
             <Pressable onPress={() => send()} style={({ pressed }) => [{ marginLeft: 10, backgroundColor: q.trim() ? T.orange : '#E8E4DD', borderRadius: 99, paddingHorizontal: 18, paddingVertical: 11 }, pressed && { opacity: 0.7 }]}>

@@ -10,7 +10,7 @@ import { writeMemoryFile } from './exporter';
 export const TOOLS = [
   { type: 'function', function: { name: 'web_search', description: '联网搜索（时效性问题、记忆里没有的外部信息先用这个）', parameters: { type: 'object', properties: { query: { type: 'string', description: '搜索词' } }, required: ['query'] } } },
   { type: 'function', function: { name: 'web_fetch', description: '抓取网页正文（配合 web_search 结果深入阅读）', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } } },
-  { type: 'function', function: { name: 'search_memory', description: '关键词检索全部记忆（转写/笔记/日结/待办/卡片），返回命中列表', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词' }, scope: { type: 'string', enum: ['all', 'transcripts', 'notes', 'todos', 'dailies'] } }, required: ['query'] } } },
+  { type: 'function', function: { name: 'search_memory', description: '关键词检索全部记忆（基于提炼层：摘要/关键点/笔记/卡片，已纠错；原始转写需用户明确要求才用 read_transcript 读）', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词' }, scope: { type: 'string', enum: ['all', 'transcripts', 'notes', 'todos', 'dailies'] } }, required: ['query'] } } },
   { type: 'function', function: { name: 'read_transcript', description: '读取指定记录的完整转写原文', parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } } },
   { type: 'function', function: { name: 'list_records', description: '枚举最近的记录（含标题/时间/摘要）', parameters: { type: 'object', properties: { days: { type: 'number', description: '最近N天，默认7' } } } } },
   { type: 'function', function: { name: 'read_course_note', description: '读取某课程完整笔记', parameters: { type: 'object', properties: { course: { type: 'string' } }, required: ['course'] } } },
@@ -116,10 +116,13 @@ export async function executeTool(name, args) {
       if (!q) return { error: 'query 为空' };
       const hits = [];
       st.jobs.filter((j) => j.status === 'done').forEach((j) => {
-        const hay = `${(j.extract && (j.extract.title || '') + (j.extract.summary || '')) || ''} ${j.asrText || ''}`;
+        /* 匹配范围含原始转写（搜得到），但注入上下文的 snippet 优先用提炼层（已纠错、已结构化）——
+         * 原始转写的口误/错字不污染 Agent 上下文；要原文走 read_transcript */
+        const hay = `${(j.extract && (j.extract.title || '') + (j.extract.summary || '') + ((j.extract && j.extract.points) || []).join('')) || ''} ${j.asrText || ''}`;
         if (hay.includes(q)) {
           const d = new Date(j.createdAt);
-          hits.push({ id: j.id, date: `${d.getMonth() + 1}.${d.getDate()}`, title: (j.extract && j.extract.title) || j.title, snippet: snippet(j.asrText || (j.extract && j.extract.summary), q, 120), kind: j.kind });
+          const refined = j.extract ? [j.extract.summary, ...((j.extract.points || []).slice(0, 3))].filter(Boolean).join('；') : '';
+          hits.push({ id: j.id, date: `${d.getMonth() + 1}.${d.getDate()}`, title: (j.extract && j.extract.title) || j.title, snippet: snippet(refined || j.asrText, q, 140), kind: j.kind });
         }
       });
       Object.entries(st.courseNotes || {}).forEach(([k, v]) => {
@@ -256,18 +259,32 @@ export async function executeTool(name, args) {
 export const todayStr = todayKeyISO;
 
 /* ---------- Agent Loop ---------- */
-export async function runAgent(question, { onStep, cancelled } = {}) {
+/* 会话历史注入：最近 N 轮（答截 300 字）——有界，保证多轮关联而不膨胀 */
+function buildHistory(prior, n = 6) {
+  return (prior || []).slice(-n).flatMap((c) => {
+    const rows = [{ role: 'user', content: c.q }];
+    if (c.a) rows.push({ role: 'assistant', content: String(c.a).slice(0, 300) });
+    return rows;
+  });
+}
+
+export async function runAgent(question, { onStep, cancelled, prior } = {}) {
   const st = getState();
   const messages = [
     { role: 'system', content: `${AGENT_SYS}\n\n${buildIndex(st)}` },
+    ...buildHistory(prior),
     { role: 'user', content: question },
   ];
   const steps = [];
   const actions = [];
+  /* 停止立即生效：AbortController 掐断进行中的 LLM/网络请求，不等当次调用自然返回 */
+  const ac = new AbortController();
+  const cancelWatch = setInterval(() => { if (cancelled && cancelled()) ac.abort(); }, 300);
+  const isCancelled = () => !!(cancelled && cancelled());
   try {
     for (let turn = 0; turn < 8; turn++) {
-      if (cancelled && cancelled()) throw new Error('已取消');
-      const resp = await llmChatRaw(messages, TOOLS, 1500);
+      if (isCancelled()) throw new Error('已取消');
+      const resp = await llmChatRaw(messages, TOOLS, 1500, ac.signal);
       const msg = resp.choices && resp.choices[0] && resp.choices[0].message;
       if (!msg) throw new Error('LLM 响应异常');
       const calls = msg.tool_calls || [];
@@ -276,7 +293,7 @@ export async function runAgent(question, { onStep, cancelled } = {}) {
       }
       messages.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
       for (const tc of calls) {
-        if (cancelled && cancelled()) throw new Error('已取消');
+        if (isCancelled()) throw new Error('已取消');
         let args = {};
         try { args = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
         const result = await executeTool(tc.function.name, args);
@@ -285,14 +302,18 @@ export async function runAgent(question, { onStep, cancelled } = {}) {
         steps.push(step);
         onStep && onStep([...steps]);
         if (/^(add_|complete_|update_|delete_|reopen_|archive_)/.test(tc.function.name)) actions.push({ name: tc.function.name, args, result });
-        messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result).slice(0, 4000) });
+        /* 上下文预算：单工具结果 1500 字（检索已默认喂提炼层，原始转写仅在 read_transcript 显式读取） */
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result).slice(0, 1500) });
       }
     }
     messages.push({ role: 'user', content: '（请直接给出最终回答，不要再调工具）' });
-    const fin = await llmChatRaw(messages, null, 800);
+    const fin = await llmChatRaw(messages, null, 800, ac.signal);
     return { answer: (fin.choices[0].message.content) || '（空回答）', steps, actions };
   } catch (e) {
-    return { answer: `出错了：${String((e && e.message) || e)}`, steps, actions, error: true };
+    const aborted = isCancelled() || (e && e.name === 'AbortError');
+    return { answer: aborted ? '（已停止）' : `出错了：${String((e && e.message) || e)}`, steps, actions, error: !aborted, aborted };
+  } finally {
+    clearInterval(cancelWatch);
   }
 }
 
