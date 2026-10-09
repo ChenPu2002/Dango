@@ -24,6 +24,15 @@ const DOC_STYLE = {
 /* 什么算课程：有课名归属的学习笔记。键名为「日常」的生活记录单独成组（用户可重命名改变归属） */
 const isCasual = (course) => course === '日常' || course === '日常随笔';
 
+const fmtAgo = (ts) => {
+  const m = Math.round((Date.now() - ts) / 60000);
+  if (m < 1) return '刚刚';
+  if (m < 60) return `${m} 分钟前`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} 小时前`;
+  return `${Math.round(h / 24)} 天前`;
+};
+
 /* 把 store 摊平成文档列表 */
 function buildDocs(s) {
   const docs = [];
@@ -97,6 +106,9 @@ function MemoryLayers({ toast }) {
         <Text style={{ fontSize: 10.5, color: T.sub, lineHeight: 16 }}>
           流转路径：记录 →日终→ 日结 →周日→ 周结 →月末→ 月结{'\n'}
           转写 14 天后瘦身 · 60 天后只留摘要（越老越冷，知识沉淀在笔记与卡片）
+        </Text>
+        <Text style={{ fontSize: 10, color: '#B3ACA1', marginTop: 4 }}>
+          自动整理：启动时 + 使用中定期检查{s.lastNightlyAt ? ` · 上次 ${fmtAgo(s.lastNightlyAt)}` : ''}
         </Text>
       </View>
     </Card>

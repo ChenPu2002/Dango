@@ -6,8 +6,10 @@ import { llmChatRaw } from './api';
 import { writeMemoryFile } from './exporter';
 
 /* ---------- 工具目录（JSON Schema）----------
- * 手帐与待办的完整 AI 增删改查接口 */
+ * 手帐与待办的完整 AI 增删改查接口 + 联网检索（参考 Eta：不绑定单一搜索服务） */
 export const TOOLS = [
+  { type: 'function', function: { name: 'web_search', description: '联网搜索（时效性问题、记忆里没有的外部信息先用这个）', parameters: { type: 'object', properties: { query: { type: 'string', description: '搜索词' } }, required: ['query'] } } },
+  { type: 'function', function: { name: 'web_fetch', description: '抓取网页正文（配合 web_search 结果深入阅读）', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } } },
   { type: 'function', function: { name: 'search_memory', description: '关键词检索全部记忆（转写/笔记/日结/待办/卡片），返回命中列表', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词' }, scope: { type: 'string', enum: ['all', 'transcripts', 'notes', 'todos', 'dailies'] } }, required: ['query'] } } },
   { type: 'function', function: { name: 'read_transcript', description: '读取指定记录的完整转写原文', parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } } },
   { type: 'function', function: { name: 'list_records', description: '枚举最近的记录（含标题/时间/摘要）', parameters: { type: 'object', properties: { days: { type: 'number', description: '最近N天，默认7' } } } } },
@@ -43,12 +45,13 @@ ${notes}
 
 const AGENT_SYS = `你是「团团」，「团子」App 里用户手机上的私人记忆助理。用户主要是大学生，用她们的录音/照片/文档构建了记忆库。
 规则：
-1. 先用工具查证，再回答；记忆里没有就明说，禁止编造；
-2. 回答引用来源，格式如〔10.7 高数录音〕；
-3. 待办与手帐支持全套增删改查：添加/修改（含改截止）/完成/恢复/删除待办，新增/订正/归档/删除卡片，读取/重写/删除课程笔记——用户要求变更时直接调工具执行并告知结果，先查后改（拿 id 再操作）；
-4. 对话中获得新的长期信息（习惯/课程/考试）→ 调 update_profile / update_course_note 沉淀；
-5. 删除类操作必须先向用户复述对象确认过再做（对话上文用户已明确说删即可直接执行）；
-6. 中文，口语化，简洁（≤6句），除非用户要求详细。`;
+1. 先用工具查证，再回答；个人记忆用 search_memory 等，记忆里没有就明说，禁止编造；
+2. 时效性/外部信息（新闻、百科、不确定的常识）→ 先 web_search，需要细节再 web_fetch，回答注明〔来源: 网页标题〕；
+3. 回答引用来源，格式如〔10.7 高数录音〕；
+4. 待办与手帐支持全套增删改查：添加/修改（含改截止）/完成/恢复/删除待办，新增/订正/归档/删除卡片，读取/重写/删除课程笔记——用户要求变更时直接调工具执行并告知结果，先查后改（拿 id 再操作）；
+5. 对话中获得新的长期信息（习惯/课程/考试）→ 调 update_profile / update_course_note 沉淀；
+6. 删除类操作必须先向用户复述对象确认过再做（对话上文用户已明确说删即可直接执行）；
+7. 中文，口语化，简洁（≤6句），除非用户要求详细。`;
 
 /* ---------- 工具实现 ---------- */
 function snippet(text, q, n) {
@@ -58,11 +61,56 @@ function snippet(text, q, n) {
   return (i > 20 ? '…' : '') + s.slice(Math.max(0, i - 20), i + n);
 }
 
-export function executeTool(name, args) {
+/* ---------- 联网工具（纯 fetch，无 SDK 依赖；参考 Eta 不绑定单一搜索服务）---------- */
+const UA = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36';
+const html2text = (html) => String(html || '')
+  .replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '')
+  .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+const decodeDDG = (href) => { try { const m = String(href).match(/uddg=([^&]+)/); return m ? decodeURIComponent(m[1]) : href; } catch (_) { return href; } };
+
+async function webSearch(q) {
+  const key = (getState().settings && getState().settings.searchKey) || '';
+  if (key) {
+    /* 博查 API（国内可达，用户配了 key 就优先） */
+    const r = await fetch('https://api.bochaai.com/v1/web-search', {
+      method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q, summary: true, count: 6 }),
+    });
+    const j = await r.json();
+    const list = ((j.data && j.data.webPages && j.data.webPages.value) || []).map((p) => ({ title: p.name, url: p.url, snippet: String(p.snippet || '').slice(0, 140) }));
+    return { engine: 'bocha', results: list.slice(0, 6) };
+  }
+  /* 默认 DuckDuckGo HTML（零配置；不可达时明确告知） */
+  const r = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': UA } });
+  if (!r.ok) return { error: `搜索不可达（HTTP ${r.status}）；可在「我的」配置搜索 Key 走博查，或改用 web_fetch` };
+  const html = await r.text();
+  const links = [...html.matchAll(/<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)];
+  const snips = [...html.matchAll(/class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|div)>/g)];
+  const results = links.slice(0, 6).map((m, i) => ({ title: html2text(m[2]), url: decodeDDG(m[1]), snippet: snips[i] ? html2text(snips[i][1]).slice(0, 140) : '' }));
+  return { engine: 'duckduckgo', results };
+}
+
+export async function executeTool(name, args) {
   const st = getState();
   const today = new Date();
   const A = args || {};
   switch (name) {
+    case 'web_search': {
+      const q = String(A.query || '').trim();
+      if (!q) return { error: 'query 为空' };
+      try { return await webSearch(q); } catch (e) { return { error: '搜索失败: ' + String((e && e.message) || e).slice(0, 80) }; }
+    }
+    case 'web_fetch': {
+      let url = String(A.url || '').trim();
+      if (!url) return { error: 'url 为空' };
+      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+      try {
+        const r = await fetch(url, { headers: { 'User-Agent': UA } });
+        const html = await r.text();
+        return { url, title: html2text((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || ''), text: html2text(html).slice(0, 5000) };
+      } catch (e) { return { error: '抓取失败: ' + String((e && e.message) || e).slice(0, 80) }; }
+    }
     case 'search_memory': {
       const q = String(A.query || '').trim();
       if (!q) return { error: 'query 为空' };
@@ -231,7 +279,7 @@ export async function runAgent(question, { onStep, cancelled } = {}) {
         if (cancelled && cancelled()) throw new Error('已取消');
         let args = {};
         try { args = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
-        const result = executeTool(tc.function.name, args);
+        const result = await executeTool(tc.function.name, args);
         /* 步骤携带完整 args/result，前端按 ETA 样式渲染详细工具调用卡 */
         const step = { name: tc.function.name, args, result, brief: briefOf(tc.function.name, args, result) };
         steps.push(step);
@@ -251,6 +299,8 @@ export async function runAgent(question, { onStep, cancelled } = {}) {
 function briefOf(name, args, result) {
   try {
     switch (name) {
+      case 'web_search': return `联网搜索“${args.query}” → ${result.results ? result.results.length : (result.error ? '失败' : 0)} 条结果`;
+      case 'web_fetch': return `读取网页「${(result && result.title) || args.url}」`;
       case 'search_memory': return `检索“${args.query}” → 命中 ${result.total || 0} 条`;
       case 'read_transcript': return `读取档案「${(result && result.title) || args.id}」`;
       case 'list_records': return `列出最近记录 ${Array.isArray(result) ? result.length : 0} 条`;
@@ -298,6 +348,10 @@ export function humanizeResult(name, result) {
     const R = result;
     if (R && R.error) return `⚠️ ${R.error}`;
     switch (name) {
+      case 'web_search':
+        return line([`（${R.engine || 'web'}）命中 ${((R.results || []).length)} 条`, ...(R.results || []).map((r2, i) => `${i + 1}. ${r2.title}\n　${r2.url}${r2.snippet ? '\n　' + r2.snippet : ''}`)]);
+      case 'web_fetch':
+        return line([`《${R.title || R.url}》`, R.url, R.text]);
       case 'search_memory':
         return line([
           `命中 ${R.total || 0} 条`,

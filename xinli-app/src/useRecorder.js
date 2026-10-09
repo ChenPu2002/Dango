@@ -12,10 +12,12 @@ const ASR_PRESET = {
 
 export function useRecorder(toast) {
   const recorder = Audio.useAudioRecorder(ASR_PRESET);
-  const [rec, setRec] = useState({ on: false, sec: 0 });
+  const [rec, setRec] = useState({ on: false, sec: 0, mode: 'class', course: '' });
   const timer = useRef(null);
+  const metaRef = useRef({ mode: 'class', course: '' });
 
-  const start = async () => {
+  /* 开始录音：mode = 'class'（课堂，course 指定课程）| 'casual'（灵感闲聊）——用户主动选择归属 */
+  const start = async (meta = {}) => {
     const perm = await Audio.requestRecordingPermissionsAsync();
     if (!perm.granted) { toast('需要麦克风权限'); return; }
     try {
@@ -25,7 +27,8 @@ export function useRecorder(toast) {
       await new Promise((r) => setTimeout(r, 500));
       console.log('[dango] record started →', recorder.isRecording);
       if (!recorder.isRecording) throw new Error('麦克风未能启动');
-      setRec({ on: true, sec: 0 });
+      metaRef.current = { mode: meta.mode || 'class', course: meta.course || '' };
+      setRec({ on: true, sec: 0, mode: metaRef.current.mode, course: metaRef.current.course });
       timer.current = setInterval(() => setRec((x) => ({ ...x, sec: x.sec + 1 })), 1000);
     } catch (e) { setRec({ on: false, sec: 0 }); toast('录音启动失败: ' + String((e && e.message) || e).slice(0, 50)); }
   };
@@ -37,10 +40,11 @@ export function useRecorder(toast) {
       await new Promise((r) => setTimeout(r, 400));
       const uri = recorder.uri;
       const dur = rec.sec;
+      const meta = metaRef.current;
       setRec({ on: false, sec: 0 });
       if (!uri) { toast('未生成录音文件'); return; }
-      await addAudioJob(uri, dur);
-      toast('已录入 · 转写+提炼自动进行');
+      await addAudioJob(uri, dur, meta);
+      toast(meta.mode === 'casual' ? '灵感已收录 · 轻量整理中' : '课堂录音已收录 · 转写+提炼中');
     } catch (e) { setRec({ on: false, sec: 0 }); toast('停止失败: ' + String((e && e.message) || e).slice(0, 50)); }
   };
 

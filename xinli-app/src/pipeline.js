@@ -2,7 +2,7 @@
  * 串行队列：queued→asr→llm(提取)→merge(合并记忆)→done，失败可重试，合并失败降级为直接追加 */
 import * as FS from 'expo-file-system/legacy';
 import { getState, setState, uid, parseDue, todayKeyISO } from './store';
-import { llmChat, asrRecognize, EXTRACT_SYS, MERGE_SYS, DAILY_SYS, REBUILD_SYS, SEGMENT_SYS, MONTHLY_SYS, parseExtractJson } from './api';
+import { llmChat, asrRecognize, EXTRACT_SYS_CLASS, EXTRACT_SYS_CASUAL, MERGE_SYS, DAILY_SYS, REBUILD_SYS, SEGMENT_SYS, MONTHLY_SYS, MIGRATE_SYS, parseExtractJson } from './api';
 import { writeMemoryFile, clearMemoryFile } from './exporter';
 
 function patchJob(id, patch) {
@@ -48,20 +48,24 @@ const LONG_AUDIO_CHARS = 6500;   /* 超过此长度走分段提炼（约 20-30 �
 const SEGMENT_CHARS = 5500;
 
 async function extractJob(job) {
+  /* 双场景：mode=casual 走轻量提炼（无笔记无卡片）；class（默认）走课堂策略（含分段） */
+  const casual = job.mode === 'casual';
+  const SYS = casual ? EXTRACT_SYS_CASUAL : EXTRACT_SYS_CLASS;
+  const courseTag = job.course ? `【课程：${job.course}】` : '';
   let content;
   if (job.kind === 'photo') {
     const b64 = await FS.readAsStringAsync(job.uri, { encoding: 'base64' });
     content = [
       { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } },
-      { type: 'text', text: '提炼这张课堂材料（板书/PPT/笔记/试卷），直接输出 JSON。' },
+      { type: 'text', text: `${courseTag}提炼这张课堂材料（板书/PPT/笔记/试卷），直接输出 JSON。` },
     ];
   } else if (job.kind === 'doc') {
     const text = await FS.readAsStringAsync(job.uri);
-    content = `提炼这份课程文档，直接输出 JSON：\n\n${text.slice(0, 50000)}`;
+    content = `${courseTag}提炼这份课程文档，直接输出 JSON：\n\n${text.slice(0, 50000)}`;
   } else {
     const full = (job.asrText || '').slice(0, 80000);
-    if (full.length > LONG_AUDIO_CHARS) {
-      /* 超长录音（如 2 小时课堂）：map-reduce —— 逐段提要点，再汇总成完整笔记 */
+    if (!casual && full.length > LONG_AUDIO_CHARS) {
+      /* 超长课堂录音（如 2 小时）：map-reduce —— 逐段提要点，再汇总成完整笔记 */
       const segs = splitText(full, SEGMENT_CHARS);
       const segNotes = [];
       for (let k = 0; k < segs.length; k++) {
@@ -74,26 +78,26 @@ async function extractJob(job) {
         segNotes.push(`【第${k + 1}段 · ${d.title || ''}】\n${(d.points || []).map((p) => '- ' + p).join('\n')}${d.summary ? '\n段意：' + d.summary : ''}`);
       }
       patchJob(job.id, { statusText: '汇总分段要点…' });
-      content = `这是一段超长录音（共 ${segs.length} 段）的分段要点整理结果。请把它们综合成一份连贯完整的学习笔记，直接输出 JSON：\n\n${segNotes.join('\n\n')}`;
+      content = `${courseTag}这是一段超长课堂录音（共 ${segs.length} 段）的分段要点整理结果。请把它们综合成一份连贯完整的学习笔记，直接输出 JSON：\n\n${segNotes.join('\n\n')}`;
     } else {
-      content = `这是一段手机录音的转写文本（可能是课堂、小组讨论、语音日记），提炼为学习笔记，直接输出 JSON：\n\n${full}`;
+      content = `${courseTag}这是一段手机录音的转写文本（${casual ? '用户的灵感闲聊' : '课堂/学习内容'}），按规则提炼，直接输出 JSON：\n\n${full}`;
     }
   }
   return parseExtractJson(await llmChat([
-    { role: 'system', content: EXTRACT_SYS },
+    { role: 'system', content: SYS },
     { role: 'user', content },
   ]));
 }
 
 /* ---------- ② 合并引擎（L2 知识层 + L3 画像层）---------- */
-async function mergeExtract(ex) {
+async function mergeExtract(ex, job) {
   const st = getState();
   const activeCards = st.cards.filter((c) => c.status === 'active');
   const cardList = activeCards.slice(0, 150).map((c) => `${c.id}|${c.q}|${String(c.a).slice(0, 40)}`).join('\n');
   const todoList = st.todos.slice(0, 80).map((t) => `${t.id}|${t.text}|${t.due || ''}|${t.done ? 'done' : 'todo'}`).join('\n');
   const profile = st.profile && st.profile.text ? st.profile.text.slice(0, 1000) : '（暂无）';
   const notes = Object.entries(st.courseNotes || {}).map(([k, v]) => `【${k}】${String(v.content || '').slice(0, 200)}`).join('\n') || '（无）';
-  const user = `新材料提取结果：\n${JSON.stringify({ title: ex.title, summary: ex.summary, outline: ex.outline, keywords: ex.keywords, points: ex.points, cards: ex.cards, todos: ex.todos })}\n\n现有活跃卡片（id|问题|答案摘要）：\n${cardList || '（无）'}\n\n现有待办（id|内容|截止|状态）：\n${todoList || '（无）'}\n\n现有课程笔记（note 更新时必须吸收并保持连续）：\n${notes}\n\n用户画像摘要：\n${profile}`;
+  const user = `新材料提取结果（mode=${job.mode === 'casual' ? 'casual（灵感闲聊：note 留空、cards 不加、吸收 profile_facts）' : 'class（课堂材料）'}）：\n${JSON.stringify({ title: ex.title, summary: ex.summary, outline: ex.outline, keywords: ex.keywords, points: ex.points, cards: ex.cards, todos: ex.todos, profile_facts: ex.profile_facts })}\n\n现有活跃卡片（id|问题|答案摘要）：\n${cardList || '（无）'}\n\n现有待办（id|内容|截止|状态）：\n${todoList || '（无）'}\n\n现有课程笔记（note 更新时必须吸收并保持连续）：\n${notes}\n\n用户画像摘要：\n${profile}`;
   const out = await llmChat([{ role: 'system', content: MERGE_SYS }, { role: 'user', content: user }]);
   const ops = parseExtractJson(out);
   ['cards', 'todos'].forEach((k) => {
@@ -196,10 +200,52 @@ function applyExtractFallback(jobId, ex) {
   return derived;
 }
 
-/* ---------- 日终归档 Agent：今日工作台清空，过去沉入记忆 ---------- */
+/* ---------- 日常笔记分拣迁移（一次性，幂等）----------
+ * 旧版把闲聊内容滚进 courseNotes['日常']（杂物抽屉）。现在拆解：有效约定→待办、长期信息→画像，然后删除该键。
+ * 迁移失败保留键，下次启动再试。 */
+export async function migrateLegacyCasual() {
+  const st = getState();
+  const d = st.courseNotes && st.courseNotes['日常'];
+  if (!d) return false;
+  /* 空壳笔记：无分拣价值，直接清理（不留空抽屉） */
+  if (!String(d.content || '').trim()) {
+    setState((s2) => { const rest = { ...s2.courseNotes }; delete rest['日常']; return { ...s2, courseNotes: rest }; });
+    console.log('[dango] 🧳 空「日常」笔记已清理');
+    return true;
+  }
+  console.log('[dango] 🧳 检测到旧「日常」笔记，分拣迁移中…');
+  try {
+    const out = await llmChat([{ role: 'system', content: MIGRATE_SYS }, { role: 'user', content: d.content }], 600);
+    const m = parseExtractJson(out);
+    setState((s2) => {
+      const rest = { ...s2.courseNotes };
+      delete rest['日常'];
+      const now = Date.now();
+      const newTodos = (m.todos || []).filter((t) => t && t.text).map((t) => {
+        const { due, dueAt } = parseDue(t.due || '');
+        return { id: uid(), text: t.text, due, dueAt, from: '日常迁移', done: false, archived: false, createdAt: now, visibleFrom: '' };
+      });
+      let profile = s2.profile || { text: '', updatedAt: 0 };
+      if ((m.profile_facts || []).length) {
+        profile = { text: [profile.text].filter(Boolean).concat(m.profile_facts).join('；').slice(0, 400), updatedAt: now };
+      }
+      return { ...s2, courseNotes: rest, todos: [...newTodos, ...s2.todos], profile };
+    });
+    writeMemoryFile().catch(() => {});
+    console.log('[dango] 🧳 迁移完成：待办', (m.todos || []).length, '条，画像事实', (m.profile_facts || []).length, '条');
+    return true;
+  } catch (e) {
+    console.log('[dango] 🧳 迁移失败，下次启动再试:', String((e && e.message) || e).slice(0, 60));
+    return false;
+  }
+}
+
+/* ---------- 日终归档 Agent：今日工作台清空，过去沉入记忆 ----------
+ * 自动运转机制（移动端无严格 cron，三重兜底）：启动归档（此处）+ 活跃期 30min 检查（App.js）+ 幂等标记 */
 export const archToday = todayKeyISO;
 
 export async function runArchivist() {
+  await migrateLegacyCasual().catch(() => {});
   const today = archToday();
   const st = getState();
   if (st.lastArchivistDay === today) return;
@@ -249,6 +295,8 @@ export async function runArchivist() {
     setState((s2) => ({ ...s2, lastArchivistDay: today }));
     try { await writeMemoryFile(); } catch (_) {}
     console.log('[dango] 🧹 归档完成: 卡片失效', staleCards.length, '张, 待办流转', pend.length, '条');
+    /* 归档后接夜间维护（周结/月结/瘦身）——启动路径兜底之一 */
+    nightlyMaintenance().catch(() => {});
   } catch (e) { console.log('[dango] 归档异常', String((e && e.message) || e).slice(0, 60)); }
 }
 
@@ -301,7 +349,7 @@ export async function runJob(jobId) {
 
     let derived, mergeNote = '';
     try {
-      const ops = await mergeExtract(ex);
+      const ops = await mergeExtract(ex, job);
       derived = applyOps(jobId, ex, ops);
       const na = (ops.cards.add || []).length, nu = (ops.cards.update || []).length, nar = (ops.cards.archive || []).length;
       mergeNote = `合并:新增${na}/订正${nu}/归档${nar}`;
@@ -340,12 +388,12 @@ function pushJob(job) {
   setState((s) => ({ ...s, jobs: [job, ...s.jobs] }));
   enqueueRun(job.id);
 }
-export async function addAudioJob(uri, dur) {
+export async function addAudioJob(uri, dur, meta = {}) {
   const id = uid();
   const dest = await persistFile(uri, 'recordings', '.m4a');
   const info = await FS.getInfoAsync(dest);
-  console.log('[dango] 录音落盘:', dest, ((info.size || 0) / 1024).toFixed(0) + 'KB', 'dur=' + dur);
-  pushJob({ id, kind: 'audio', title: `录音 ${new Date().toTimeString().slice(0, 5)}`, uri: dest, dur, size: info.size || 0, createdAt: Date.now(), status: 'queued', statusText: '排队中' });
+  console.log('[dango] 录音落盘:', dest, ((info.size || 0) / 1024).toFixed(0) + 'KB', 'dur=' + dur, meta.mode || 'class', meta.course || '');
+  pushJob({ id, kind: 'audio', mode: meta.mode || 'class', course: meta.course || '', title: meta.course ? `${meta.course} ${new Date().toTimeString().slice(0, 5)}` : `${meta.mode === 'casual' ? '灵感' : '录音'} ${new Date().toTimeString().slice(0, 5)}`, uri: dest, dur, size: info.size || 0, createdAt: Date.now(), status: 'queued', statusText: '排队中' });
   return id;
 }
 export async function addPhotoJob(uri, size) {

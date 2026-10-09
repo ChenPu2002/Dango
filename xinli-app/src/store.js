@@ -12,6 +12,7 @@ export const DEFAULTS = {
     llmKey: DEEPSEEK_KEY,
     llmModel: 'deepseek-flash',
     asrKey: ASR_KEY,
+    searchKey: '',   // 可选：博查搜索 API Key（不填走 DuckDuckGo）
     exportRoot: '',  // SAF tree URI（一次授权）
     exportDir: '',   // 固定目录：文档/团子 的确定性 URI
     exportAuto: false,

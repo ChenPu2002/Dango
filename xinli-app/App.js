@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { SafeAreaView, ScrollView, View, Text, StatusBar, Platform, Pressable, Animated, Keyboard } from 'react-native';
+import { SafeAreaView, ScrollView, View, Text, TextInput, StatusBar, Platform, Pressable, Animated, Keyboard } from 'react-native';
 import { T } from './src/theme';
 import { Ic } from './src/icons';
 import { Card, TabBar, Toast, ActionSheet, Sheet, Btn, GhostBtn, PulseDot } from './src/ui';
-import { initStore, useStore } from './src/store';
-import { runArchivist } from './src/pipeline';
+import { initStore, useStore, getState } from './src/store';
+import { runArchivist, nightlyMaintenance } from './src/pipeline';
 import { useRecorder } from './src/useRecorder';
 import Today from './src/screens/Today';
 import Journal from './src/screens/Journal';
@@ -20,9 +20,59 @@ const TABS = [
 
 const mmss = (n) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
 
+/* 开始记录：归属由用户主动选择（不靠 AI 猜）——💡灵感闲聊 / 📖课堂录音（选课） */
+function RecStartSheet({ visible, onClose, courses, onStart }) {
+  const [pickClass, setPickClass] = useState(false);
+  const [newCourse, setNewCourse] = useState('');
+  useEffect(() => { if (visible) { setPickClass(false); setNewCourse(''); } }, [visible]);
+  const bigBtn = (icon, title, sub, onPress, fg, bg) => (
+    <Pressable onPress={onPress} style={({ pressed }) => [
+      { flexDirection: 'row', alignItems: 'center', borderRadius: 16, padding: 14, backgroundColor: bg, marginBottom: 9 },
+      pressed && { opacity: 0.7 },
+    ]}>
+      <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+        <Ic name={icon} size={20} color={fg} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 14.5, fontWeight: '800', color: T.text }}>{title}</Text>
+        <Text style={{ fontSize: 10.5, color: T.sub, marginTop: 2, lineHeight: 15 }}>{sub}</Text>
+      </View>
+      <Ic name="chevR" size={16} color="#C6BFB4" />
+    </Pressable>
+  );
+  return (
+    <Sheet visible={visible} onClose={onClose}>
+      <Text style={{ fontSize: 16, fontWeight: '800', color: T.text, marginBottom: 12 }}>开始记录</Text>
+      {bigBtn('sparkle', '灵感闲聊', '随想 · 约定 · 吐槽 → 待办 / 心情 / 画像，不进课程', () => { onClose(); onStart({ mode: 'casual' }); }, T.purple, T.purpleSoft)}
+      {bigBtn('book', '课堂录音', '选一门课 → 转写 · 分段提炼 · 笔记与复习卡片', () => setPickClass(true), T.orangeDeep, T.orangeSoft)}
+      {pickClass ? (
+        <View style={{ borderTopWidth: 0.5, borderTopColor: T.line, paddingTop: 10 }}>
+          <Text style={{ fontSize: 11.5, fontWeight: '700', color: T.sub, marginBottom: 8 }}>这节课是——</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {courses.map((c) => (
+              <Pressable key={c} onPress={() => { onClose(); onStart({ mode: 'class', course: c }); }}
+                style={({ pressed }) => [{ borderRadius: 99, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, marginBottom: 8, backgroundColor: '#fff', borderWidth: 1.5, borderColor: T.orangeSoft }, pressed && { opacity: 0.6 }]}>
+                <Text style={{ fontSize: 12.5, fontWeight: '600', color: T.orangeDeep }}>{c}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TextInput value={newCourse} onChangeText={setNewCourse} placeholder="新课程名…" placeholderTextColor={T.sub} returnKeyType="done"
+              style={{ flex: 1, fontSize: 13, color: T.text, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 }} />
+            <Pressable onPress={() => { if (newCourse.trim()) { onClose(); onStart({ mode: 'class', course: newCourse.trim() }); } }}
+              style={({ pressed }) => [{ marginLeft: 8, backgroundColor: T.orange, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 }, pressed && { opacity: 0.7 }]}>
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>开始</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+    </Sheet>
+  );
+}
+
 /* 录音控制浮层：录音中点 FAB 只会打开这里（不会误结束）；
  * 「丢弃」需按住 700ms 进度填满才执行，防手滑 */
-function RecPanel({ visible, onClose, sec, onStop, onDiscard }) {
+function RecPanel({ visible, onClose, sec, mode, course, onStop, onDiscard }) {
   const hold = useRef(new Animated.Value(0)).current;
   const holdAni = useRef(null);
   const startHold = () => {
@@ -38,7 +88,9 @@ function RecPanel({ visible, onClose, sec, onStop, onDiscard }) {
       <View style={{ alignItems: 'center', paddingBottom: 4 }}>
         <PulseDot />
         <Text style={{ fontSize: 36, fontWeight: '900', color: T.text, marginTop: 10, fontVariant: ['tabular-nums'] }}>{mmss(sec)}</Text>
-        <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 2 }}>正在录制 · 完成后自动转写并整理</Text>
+        <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 2 }}>
+          {mode === 'casual' ? '💡 灵感闲聊 · 完成后轻量整理' : `📖 ${course || '课堂'} · 完成后转写+提炼`}
+        </Text>
       </View>
       <Btn text="完成 · 保存并整理" onPress={() => { onClose(); onStop(); }} style={{ marginTop: 16 }} />
       <GhostBtn text="继续录音" onPress={onClose} style={{ marginTop: 8 }} />
@@ -58,10 +110,13 @@ export default function App() {
   const [fabMenu, setFabMenu] = useState(false);
   const [askPrefill, setAskPrefill] = useState('');
   const [recPanel, setRecPanel] = useState(false);
+  const [startSheet, setStartSheet] = useState(false);
   const [kb, setKb] = useState(false);
   const toastTimer = useRef(null);
   const io = useRecorder((m) => toast(m));
   const pulse = useRef(new Animated.Value(1)).current;
+  const s = useStore();
+  const courses = Object.keys((s && s.courseNotes) || {}).filter((k) => k !== '日常');
 
   const toast = (m) => {
     setToastMsg(m);
@@ -82,6 +137,17 @@ export default function App() {
     const show = Keyboard.addListener('keyboardDidShow', () => setKb(true));
     const hide = Keyboard.addListener('keyboardDidHide', () => setKb(false));
     return () => { show.remove(); hide.remove(); };
+  }, []);
+
+  /* 记忆整理自动运转·兜底之二：App 活跃期间每 30 分钟检查一次，超 20 小时未维护则触发
+   * （移动端没有严格 cron：启动归档兜底之一 + 此处 + lastNightlyAt 幂等标记，三重保证） */
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (Date.now() - (getState().lastNightlyAt || 0) > 20 * 3600e3) {
+        nightlyMaintenance().catch(() => {});
+      }
+    }, 30 * 60 * 1000);
+    return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
@@ -123,15 +189,15 @@ export default function App() {
 
         <TabBar tabs={TABS} active={tab} onChange={setTab} fabGap />
 
-        {/* 中央录音 FAB：四个 Tab 常驻（键盘弹出时让位）；录音中点击弹出控制浮层，防误触 */}
+        {/* 中央录音 FAB：四个 Tab 常驻（键盘弹出时让位）；点按先选场景（课堂/灵感），录音中点击弹控制浮层 */}
         {showFab ? (
           <View style={{ position: 'absolute', bottom: 24, left: 0, right: 0, alignItems: 'center' }} pointerEvents="box-none">
             <Animated.View style={{ transform: [{ scale: io.rec.on ? pulse : 1 }] }}>
               <Pressable
-                onPress={io.rec.on ? () => setRecPanel(true) : io.start}
+                onPress={io.rec.on ? () => setRecPanel(true) : () => setStartSheet(true)}
                 onLongPress={() => !io.rec.on && setFabMenu(true)}
                 delayLongPress={300}
-                accessibilityLabel={io.rec.on ? '录音控制' : '开始录音'}
+                accessibilityLabel={io.rec.on ? '录音控制' : '开始记录'}
                 style={({ pressed }) => [
                   {
                     width: 58, height: 58, borderRadius: 99, alignItems: 'center', justifyContent: 'center',
@@ -145,13 +211,18 @@ export default function App() {
             </Animated.View>
             {io.rec.on ? (
               <View style={{ position: 'absolute', top: -20, alignItems: 'center', backgroundColor: 'rgba(30,30,35,.82)', borderRadius: 99, paddingHorizontal: 10, paddingVertical: 3 }}>
-                <Text style={{ fontSize: 10.5, color: '#fff', fontVariant: ['tabular-nums'] }}>⏺ {mmss(io.rec.sec)}</Text>
+                <Text style={{ fontSize: 10.5, color: '#fff', fontVariant: ['tabular-nums'] }}>
+                  {io.rec.mode === 'casual' ? '💡' : '📖'}{io.rec.mode === 'class' && io.rec.course ? `${io.rec.course.slice(0, 4)} ` : ''}{mmss(io.rec.sec)}
+                </Text>
               </View>
             ) : null}
           </View>
         ) : null}
 
+        <RecStartSheet visible={startSheet} onClose={() => setStartSheet(false)} courses={courses}
+          onStart={(meta) => io.start(meta)} />
         <RecPanel visible={recPanel} onClose={() => setRecPanel(false)} sec={io.rec.sec}
+          mode={io.rec.mode} course={io.rec.course}
           onStop={io.stop} onDiscard={io.discard} />
 
         <ActionSheet

@@ -16,47 +16,47 @@ let fail = 0;
 const check = (name, ok, detail) => { console.log((ok ? '✅' : '❌') + ' ' + name + (detail ? ' | ' + detail : '')); if (!ok) fail++; };
 
 /* ---- 待办 CRUD ---- */
-executeTool('add_todo', { text: '周五交论文初稿', due: '周五' });
-const todos = executeTool('get_todos', { pending_only: true });
+await executeTool('add_todo', { text: '周五交论文初稿', due: '周五' });
+const todos = await executeTool('get_todos', { pending_only: true });
 const t1 = todos.find((t) => t.text.includes('论文'));
 const t1raw = getState().todos.find((t) => t.text.includes('论文'));
 check('add_todo + due 解析', !!t1 && t1.due === '周五' && t1raw.dueAt > 0 && !!t1.dueText, JSON.stringify(t1 || {}));
-const up = executeTool('update_todo', { id: t1.id, due: '明天' });
-const t1b = executeTool('get_todos', {}).find((t) => t.id === t1.id);
+const up = await executeTool('update_todo', { id: t1.id, due: '明天' });
+const t1b = await executeTool('get_todos', {}).find((t) => t.id === t1.id);
 check('update_todo 改截止', up.ok && t1b.due === '明天', `${t1b.due} dueAt=${t1b.dueAt}`);
-executeTool('update_todo', { id: t1.id, text: '周五交论文终稿' });
-check('update_todo 改文本', executeTool('get_todos', {}).some((t) => t.id === t1.id && t.text.includes('终稿')));
-executeTool('complete_todo', { text: '终稿' });
-check('complete_todo 模糊匹配', executeTool('get_todos', { pending_only: false }).find((t) => t.id === t1.id).done === true);
-const ro = executeTool('reopen_todo', { id: t1.id });
-check('reopen_todo 恢复', ro.ok && executeTool('get_todos', { pending_only: true }).some((t) => t.id === t1.id));
-const dl = executeTool('delete_todo', { id: t1.id });
-check('delete_todo 删除', dl.ok && !executeTool('get_todos', { pending_only: false }).some((t) => t.id === t1.id), dl.deleted);
+await executeTool('update_todo', { id: t1.id, text: '周五交论文终稿' });
+check('update_todo 改文本', await executeTool('get_todos', {}).some((t) => t.id === t1.id && t.text.includes('终稿')));
+await executeTool('complete_todo', { text: '终稿' });
+check('complete_todo 模糊匹配', await executeTool('get_todos', { pending_only: false }).find((t) => t.id === t1.id).done === true);
+const ro = await executeTool('reopen_todo', { id: t1.id });
+check('reopen_todo 恢复', ro.ok && await executeTool('get_todos', { pending_only: true }).some((t) => t.id === t1.id));
+const dl = await executeTool('delete_todo', { id: t1.id });
+check('delete_todo 删除', dl.ok && !await executeTool('get_todos', { pending_only: false }).some((t) => t.id === t1.id), dl.deleted);
 
 /* ---- 卡片 CRUD ---- */
-executeTool('add_card', { q: '泰勒公式的作用？', a: '多项式局部逼近', topic: '高等数学' });
-const cards = executeTool('get_cards', {});
+await executeTool('add_card', { q: '泰勒公式的作用？', a: '多项式局部逼近', topic: '高等数学' });
+const cards = await executeTool('get_cards', {});
 const c1 = cards.find((c) => c.q.includes('泰勒'));
 check('add_card + get_cards', !!c1 && c1.status === 'active');
-executeTool('update_card', { id: c1.id, a: '用多项式逼近复杂函数，误差由余项控制', reason: '补充' });
+await executeTool('update_card', { id: c1.id, a: '用多项式逼近复杂函数，误差由余项控制', reason: '补充' });
 check('update_card 订正', getState().cards.find((c) => c.id === c1.id).a.includes('余项'));
-executeTool('archive_card', { id: c1.id });
+await executeTool('archive_card', { id: c1.id });
 check('archive_card 归档', getState().cards.find((c) => c.id === c1.id).status === 'archived');
-check('归档后 active_only 过滤', !executeTool('get_cards', {}).some((c) => c.id === c1.id));
-executeTool('delete_card', { id: c1.id });
+check('归档后 active_only 过滤', !await executeTool('get_cards', {}).some((c) => c.id === c1.id));
+await executeTool('delete_card', { id: c1.id });
 check('delete_card 彻底删除', !getState().cards.some((c) => c.id === c1.id));
 
 /* ---- 课程笔记 ---- */
-executeTool('update_course_note', { course: '高等数学', full: '极限、导数、泰勒公式；期中第三~五章' });
+await executeTool('update_course_note', { course: '高等数学', full: '极限、导数、泰勒公式；期中第三~五章' });
 check('update_course_note', getState().courseNotes['高等数学'].content.includes('期中'));
-const lc = executeTool('list_courses', {});
+const lc = await executeTool('list_courses', {});
 check('list_courses', Array.isArray(lc) && lc.some((c) => c.course === '高等数学'));
-const dcn = executeTool('delete_course_note', { course: '高等数学' });
+const dcn = await executeTool('delete_course_note', { course: '高等数学' });
 check('delete_course_note', dcn.ok && !getState().courseNotes['高等数学']);
 
 /* ---- 结果人读化：无 id / dueAt 等机器字段 ---- */
-executeTool('add_todo', { text: '给妈妈打电话', due: '周日' });
-const hTodos = humanizeResult('get_todos', executeTool('get_todos', {}));
+await executeTool('add_todo', { text: '给妈妈打电话', due: '周日' });
+const hTodos = humanizeResult('get_todos', await executeTool('get_todos', {}));
 check('humanizeResult(get_todos) 无 id', !/\bid["：:]/.test(hTodos), hTodos.replace(/\n/g, ' | '));
 const hArgs = humanizeArgs({ id: 'xxx', text: '内容', due: '周五' });
 check('humanizeArgs 过滤 id', !hArgs.includes('xxx') && hArgs.includes('截止：周五'), hArgs);

@@ -180,3 +180,11 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+/* 团子：JS 改动必须进 APK——Expo bundle 任务的 up-to-date 判断在此项目不可靠（已咬过两轮：
+ * 增量构建复用旧 bundle，新代码静默丢失）。强制每次重打。 */
+afterEvaluate {
+    tasks.matching { it.name.contains("BundleReleaseJsAndAssets") }.configureEach {
+        outputs.upToDateWhen { false }
+    }
+}

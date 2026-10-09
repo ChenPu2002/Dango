@@ -90,6 +90,7 @@ export default function Me({ toast, go }) {
           {field('LLM API Key', 'llmKey', 'sk-...', true)}
           {field('模型', 'llmModel', 'deepseek-flash')}
           {field('ASR API Key（火山 Seed-ASR）', 'asrKey', '火山 x-api-key', true)}
+          {field('搜索 API Key（可选·博查，不填走 DuckDuckGo）', 'searchKey', '博查 sk-...', true)}
           {dirty ? <Btn text="保存配置" onPress={save} style={{ marginTop: 14 }} /> : (
             <Text style={{ fontSize: 11, color: T.sub, textAlign: 'center', marginTop: 12 }}>
               当前：{cfg.llmModel} · 配置仅存手机本地

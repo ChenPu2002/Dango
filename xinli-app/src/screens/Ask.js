@@ -11,6 +11,8 @@ const QUICK = ['我最近的作业有哪些？', '上周学了什么？', '帮�
 
 /* ===== 工具调用卡（ETA 式：位于回答气泡上方，含参数/结果详情） ===== */
 const TOOL_META = {
+  web_search: { icon: 'search' },
+  web_fetch: { icon: 'doc' },
   search_memory: { icon: 'search' },
   read_transcript: { icon: 'doc' },
   list_records: { icon: 'clock' },
@@ -158,6 +160,7 @@ export default function Ask({ toast, prefill, clearPrefill }) {
   const [running, setRunning] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [delTarget, setDelTarget] = useState(null);
+  const [msgMenu, setMsgMenu] = useState(null);
   const cancelRef = useRef(false);
   const scrollRef = useRef(null);
   const sessions = s.sessions || [];
@@ -193,12 +196,8 @@ export default function Ask({ toast, prefill, clearPrefill }) {
     sessions: st.sessions.map((se) => (se.id === cur.id ? { ...fn(se), updatedAt: Date.now() } : se)),
   }));
 
-  const send = async (text) => {
-    const question = (text || q).trim();
-    if (!question || running || !cur) return;
-    setQ('');
-    const chatId = uid();
-    patchCur((se) => ({ ...se, title: se.messages.length ? se.title : question.slice(0, 14), messages: [...se.messages, { id: chatId, q: question, a: '', steps: [], actions: [], at: Date.now() }] }));
+  /* 发送与重新生成共用一条执行管线 */
+  const runOne = async (chatId, question) => {
     setRunning(true);
     cancelRef.current = false;
     try {
@@ -211,6 +210,26 @@ export default function Ask({ toast, prefill, clearPrefill }) {
       patchCur((se) => ({ ...se, messages: se.messages.map((c) => (c.id === chatId ? { ...c, a: '出错: ' + String((e && e.message) || e).slice(0, 60) } : c)) }));
     }
     setRunning(false);
+  };
+
+  const send = async (text) => {
+    const question = (text || q).trim();
+    if (!question || running || !cur) return;
+    setQ('');
+    const chatId = uid();
+    patchCur((se) => ({ ...se, title: se.messages.length ? se.title : question.slice(0, 14), messages: [...se.messages, { id: chatId, q: question, a: '', steps: [], actions: [], at: Date.now() }] }));
+    runOne(chatId, question);
+  };
+
+  /* ETA 式消息操作：长按消息 → 重新生成 / 删除这轮 */
+  const regen = (c) => {
+    if (running || !c.a) return;
+    patchCur((se) => ({ ...se, messages: se.messages.map((x) => (x.id === c.id ? { ...x, a: '', steps: [], actions: [] } : x)) }));
+    runOne(c.id, c.q);
+  };
+  const dropMsg = (c) => {
+    patchCur((se) => ({ ...se, messages: se.messages.filter((x) => x.id !== c.id) }));
+    toast('已删除这轮对话');
   };
 
   const newSession = () => {
@@ -257,9 +276,10 @@ export default function Ask({ toast, prefill, clearPrefill }) {
 
           {chats.map((c) => (
             <View key={c.id} style={{ marginTop: 18 }}>
-              <View style={{ alignSelf: 'flex-end', backgroundColor: T.orange, borderRadius: 18, borderBottomRightRadius: 5, paddingHorizontal: 14, paddingVertical: 10, maxWidth: '78%' }}>
+              <Pressable onLongPress={() => setMsgMenu(c)} delayLongPress={350}
+                style={{ alignSelf: 'flex-end', backgroundColor: T.orange, borderRadius: 18, borderBottomRightRadius: 5, paddingHorizontal: 14, paddingVertical: 10, maxWidth: '78%' }}>
                 <Text style={{ fontSize: 13.5, color: '#fff', lineHeight: 21 }}>{c.q}</Text>
-              </View>
+              </Pressable>
               {/* 工具调用卡（ETA 式：答案上方，逐个展开详情） */}
               {c.steps && c.steps.length ? (
                 <View style={{ marginTop: 10 }}>
@@ -269,10 +289,11 @@ export default function Ask({ toast, prefill, clearPrefill }) {
                 </View>
               ) : null}
               {c.a ? (
-                <View style={{ alignSelf: 'flex-start', backgroundColor: '#fff', borderWidth: 0.5, borderColor: T.line, borderRadius: 18, borderTopLeftRadius: 5, paddingHorizontal: 14, paddingVertical: 11, maxWidth: '88%', ...T.shadow }}>
+                <Pressable onLongPress={() => setMsgMenu(c)} delayLongPress={350}
+                  style={{ alignSelf: 'flex-start', backgroundColor: '#fff', borderWidth: 0.5, borderColor: T.line, borderRadius: 18, borderTopLeftRadius: 5, paddingHorizontal: 14, paddingVertical: 11, maxWidth: '88%', ...T.shadow }}>
                   <MarkdownText text={c.a} style={{ fontSize: 13, color: T.text2 }} />
                   <ActionChips actions={c.actions} />
-                </View>
+                </Pressable>
               ) : (
                 <View style={{ alignSelf: 'flex-start', backgroundColor: '#fff', borderWidth: 0.5, borderColor: T.line, borderRadius: 18, borderTopLeftRadius: 5, paddingHorizontal: 14, paddingVertical: 11, maxWidth: '88%', ...T.shadow }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -316,6 +337,11 @@ export default function Ask({ toast, prefill, clearPrefill }) {
           });
           toast('对话已删除');
         } }] : []} />
+      <ActionSheet visible={!!msgMenu} onClose={() => setMsgMenu(null)} title={msgMenu ? String(msgMenu.q || '').slice(0, 30) : ''}
+        options={msgMenu ? [
+          ...(msgMenu.a ? [{ icon: 'sync', label: '重新生成回答', onPress: () => regen(msgMenu) }] : []),
+          { icon: 'trash', label: '删除这轮对话', tone: 'danger', onPress: () => dropMsg(msgMenu) },
+        ] : []} />
     </View>
   );
 }

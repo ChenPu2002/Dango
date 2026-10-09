@@ -4,7 +4,23 @@
 > 本地：~/campus-echo-demo/
 > 本轮：STATUS 旧清单 5 项全部收口 + 一轮完整视觉重设计（去 emoji 化）
 
-## 本轮完成（2026-10-09 深夜 · 第八轮：用户体验叙事驱动 —— 课程控制权 / 卡片常驻 / 键盘彻底修复）
+## 本轮完成（2026-10-09 下午 · 第十轮：双场景录音 / 纯提示词纠错 / Eta 对齐 / 云文档重做 / 自动运转）
+
+用户定稿方案（否决词典/热词表：「不可维护、非原则性治理」）。详见 `docs/VERIFY-r10.md`：
+
+| 方向 | 改动 | 验证 |
+|---|---|---|
+| 双场景录音 | FAB →「开始记录」浮层：💡灵感闲聊 / 📖课堂录音（选课 chips+新建）；job 带 mode/course；EXTRACT 双策略（casual 禁 cards/课程笔记）；MERGE 硬规则 casual→note 空 | test-dualmode 策略断言 5/5 + 真机 r10 |
+| 纠错（纯提示词） | CLASS/CASUAL/SEGMENT 统一纠错原则：语境+常识推断、全字段正名、无把握保守 | 真机实证：待办「传子APP」→「团子APP」已被纠正 |
+| 日常迁移 | migrateLegacyCasual：约定→待办、学情→画像、删键；空壳直接清理；挂启动链 | harness 5/5（删键/待办/画像/幂等）+ 真机 |
+| 对话对齐 Eta | web_search（DDG 零配置/博查可选）+ web_fetch 工具；消息长按 重新生成/删除这轮；executeTool 异步化 | harness 真网络 4/4（DDG 6 条结果、百度抓取）+ 真机 |
+| 云文档重做 | 按日期分组 + 类型 chips（计数）+ **照片缩略图与全屏预览**；照片本体 jpg 进 SAF 导出 | 真机 r10 |
+| 自动运转机制 | 三重兜底：启动（runArchivist 接 nightlyMaintenance，补遗留 TODO）+ 活跃期 30min 检查 + 幂等标记；分层卡显示「上次整理」 | 真机（上次 N 前 可见） |
+| **构建坑根治** | gradle 复用旧 JS bundle → 新代码静默不进 APK（咬了两轮，真机表现"功能没做"）；build.gradle 强制 BundleReleaseJsAndAssets 永不 up-to-date | APK 抽 bundle grep ASCII 标志验证 |
+
+教训记录：第七~九轮的"增量构建"实际在装旧 bundle——**以后验证新功能必须先从 APK 抽 bundle 确认含新代码标志**。
+
+## 前次完成（2026-10-09 深夜 · 第八轮：用户体验叙事驱动 —— 课程控制权 / 卡片常驻 / 键盘彻底修复）
 
 先写用户视角叙事文档 `docs/EXPERIENCE.md`（小满的一天：每个触点看到什么/期待什么），由叙事推导三条产品规则再动代码。真机截图 `docs/shots/r8-*.png`：
 
@@ -164,6 +180,9 @@ node --import ./scripts/register.mjs scripts/test-archivist.mjs
 # 构建（注意 ANDROID_HOME）
 cd android && ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew assembleRelease -x lint
 adb install -r app/build/outputs/apk/release/app-release.apk
+# ⚠️ 曾有坑：gradle 复用旧 JS bundle（已在 build.gradle 根治：BundleReleaseJsAndAssets 永不 up-to-date）。
+#    升级 SDK 路径后本机实际用：JAVA_HOME=/opt/homebrew/opt/openjdk@17 ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+#    验证新代码进包：unzip APK 的 assets/index.android.bundle 后 grep ASCII 标志（中文在 Hermes 字节码中不连续，grep 不到不代表缺失）
 # 观察日志：adb logcat -s ReactNativeJS | grep dango（OPPO 上可能被系统裁剪）
 # 坑：gradle 缓存旧bundle → 改JS后加 --rerun-tasks
 ```

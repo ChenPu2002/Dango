@@ -117,6 +117,8 @@ function jobFiles(j) {
   const stamp = `${d.getMonth() + 1}${String(d.getDate()).padStart(2, '0')}`;
   const title = ((j.extract && j.extract.title) || j.title || '记录').replace(/[\\/:*?"<>|]/g, '').slice(0, 24);
   const files = [];
+  /* 照片本体也导出（binary）：云文档与外部文件夹都能看到拍的板书/PPT */
+  if (j.kind === 'photo' && j.uri) files.push({ name: `${stamp}_${title}_照片.jpg`, binary: true, jobUri: j.uri });
   if (j.asrText) files.push({ name: `${stamp}_${title}_转写.txt`, content: j.asrText });
   if (j.extract) files.push({
     name: `${stamp}_${title}_提炼.md`,
@@ -125,11 +127,34 @@ function jobFiles(j) {
   return files;
 }
 
+/* 二进制安全写入（照片 jpg）：base64 直写，失败走 SAF 创建 */
+async function writeBinarySafe(dirUri, fileName, base64) {
+  const fileUri = `${dirUri}%2F${encodeURIComponent(fileName)}`;
+  let wrote = false;
+  try { await FS.writeAsStringAsync(fileUri, base64, { encoding: FS.EncodingType.Base64 }); wrote = true; } catch (_) {}
+  if (!wrote) {
+    const nu = await SAF.createFileAsync(dirUri, fileName, 'image/jpeg');
+    await FS.writeAsStringAsync(nu, base64, { encoding: FS.EncodingType.Base64 });
+  }
+  setState((st) => {
+    const rest = (st.exportedFiles || []).filter((f) => f.name !== fileName);
+    return { ...st, exportedFiles: [{ name: fileName, at: Date.now(), content: '（照片）' }, ...rest].slice(0, 100) };
+  });
+}
+
 export async function exportJob(j) {
   const dir = getState().settings.exportDir || (await ensureExportDir());
   if (!dir) return;
   for (const f of jobFiles(j)) {
-    try { await writeSafe(dir, f.name, f.content); } catch (e) { console.log('[dango] 导出失败', f.name, String((e && e.message) || e).slice(0, 60)); }
+    try {
+      if (f.binary) {
+        if (!f.jobUri) continue;
+        const b64 = await FS.readAsStringAsync(f.jobUri, { encoding: 'base64' });
+        await writeBinarySafe(dir, f.name, b64);
+      } else {
+        await writeSafe(dir, f.name, f.content);
+      }
+    } catch (e) { console.log('[dango] 导出失败', f.name, String((e && e.message) || e).slice(0, 60)); }
   }
 }
 
@@ -139,10 +164,14 @@ export async function exportAll() {
   const st = getState();
   const entries = [{ name: MEMORY_FILE, content: buildMemoryMd(st) }];
   st.jobs.filter((j) => j.status === 'done').forEach((j) => {
-    jobFiles(j).forEach((f) => entries.push({ name: f.name, content: f.content }));
+    jobFiles(j).forEach((f) => {
+      if (f.binary) entries.push({ name: f.name, binary: true, jobUri: f.jobUri });
+      else entries.push({ name: f.name, content: f.content });
+    });
   });
   const at = Date.now();
-  setState((s2) => ({ ...s2, exportedFiles: entries.slice(0, 120).map((e) => ({ name: e.name, at, content: String(e.content).slice(0, 4000) })) }));
+  /* 索引只记文本文件（照片体积大，只记名字） */
+  setState((s2) => ({ ...s2, exportedFiles: entries.filter((e) => !e.binary).slice(0, 120).map((e) => ({ name: e.name, at, content: String(e.content || '').slice(0, 4000) })) }));
 
   const root = (() => {
     let r = st.settings.exportRoot;
@@ -154,7 +183,15 @@ export async function exportAll() {
       const dir = deriveDirUri(root);
       await SAF.makeDirectoryAsync(`${root}/document/${encodeURIComponent('primary:Documents')}`, FOLDER).catch(() => {});
       for (const e of entries.slice(0, 31)) {
-        try { await writeSafe(dir, e.name, e.content); } catch (_) {}
+        try {
+          if (e.binary) {
+            if (!e.jobUri) continue;
+            const b64 = await FS.readAsStringAsync(e.jobUri, { encoding: 'base64' });
+            await writeBinarySafe(dir, e.name, b64);
+          } else {
+            await writeSafe(dir, e.name, e.content);
+          }
+        } catch (_) {}
       }
       console.log('[dango] 📤 镜像同步完成', Math.min(entries.length, 31), '个');
     } catch (e) { console.log('[dango] 镜像同步失败', String((e && e.message) || e).slice(0, 60)); }
