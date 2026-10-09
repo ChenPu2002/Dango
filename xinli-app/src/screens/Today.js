@@ -259,30 +259,45 @@ function TodayCards() {
   const s = useStore();
   const [full, setFull] = useState(false);
   const today = new Date().toDateString();
-  const cards = s.cards.filter((c) => c.status === 'active' && new Date(c.createdAt).toDateString() === today);
+  const active = s.cards.filter((c) => c.status === 'active');
+  const fresh = active.filter((c) => new Date(c.createdAt).toDateString() === today);
   const grade = (c, up) => setState((st) => ({ ...st, cards: st.cards.map((x) => (x.id === c.id ? { ...x, box: up ? (x.box || 0) + 1 : 0 } : x)) }));
-  if (!cards.length) return null;
+  if (!active.length) return null;
+  /* 常驻入口：有新卡展示今日 deck；没有新卡也保留「在册卡片」入口（入口消失 = 功能消失） */
   return (
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Text style={{ fontSize: 15, fontWeight: '800', color: T.text, flex: 1 }}>今日卡片</Text>
+        <Text style={{ fontSize: 15, fontWeight: '800', color: T.text, flex: 1 }}>{fresh.length ? '今日卡片' : '复习卡片'}</Text>
         <Pressable onPress={() => setFull(true)}>
-          <Text style={{ fontSize: 11.5, color: T.orangeDeep, fontWeight: '700' }}>复习全部</Text>
+          <Text style={{ fontSize: 11.5, color: T.orangeDeep, fontWeight: '700' }}>{fresh.length ? `全部复习 · ${active.length} 张` : `去复习`}</Text>
         </Pressable>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }} contentContainerStyle={{ paddingHorizontal: 2 }}>
-        {cards.slice(0, 5).map((c) => <FlipCard key={c.id} c={c} small />)}
-      </ScrollView>
+      {fresh.length ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }} contentContainerStyle={{ paddingHorizontal: 2 }}>
+          {fresh.slice(0, 5).map((c) => <FlipCard key={c.id} c={c} small />)}
+        </ScrollView>
+      ) : (
+        <Pressable onPress={() => setFull(true)} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', marginTop: 10, backgroundColor: '#FBF6EF', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13 }, pressed && { opacity: 0.6 }]}>
+          <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: T.orangeSoft, alignItems: 'center', justifyContent: 'center', marginRight: 11 }}>
+            <Ic name="doc" size={16} color={T.orangeDeep} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13.5, fontWeight: '700', color: T.text }}>攒下的 {active.length} 张卡在等你</Text>
+            <Text style={{ fontSize: 11, color: T.sub, marginTop: 1 }}>翻一翻，别让它们凉了</Text>
+          </View>
+          <Ic name="chevR" size={15} color="#C6BFB4" />
+        </Pressable>
+      )}
       <Modal visible={full} animationType="slide" onRequestClose={() => setFull(false)}>
         <View style={{ flex: 1, backgroundColor: T.bg, paddingTop: 60, paddingHorizontal: 14 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-            <Text style={{ fontSize: 20, fontWeight: '800', color: T.text, flex: 1 }}>今日复习 · {cards.length} 张</Text>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: T.text, flex: 1 }}>复习卡片 · {active.length} 张</Text>
             <Pressable onPress={() => setFull(false)} style={{ backgroundColor: '#fff', borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8 }}>
               <Text style={{ fontSize: 13, color: T.sub, fontWeight: '600' }}>完成</Text>
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={{ paddingTop: 14, paddingBottom: 40 }}>
-            {cards.map((c) => (
+            {active.map((c) => (
               <View key={c.id} style={{ marginBottom: 8 }}>
                 <FlipCard c={c} onGrade={(up) => grade(c, up)} />
               </View>

@@ -1,6 +1,6 @@
 /* MIUI 风格基础组件 */
 import React, { useEffect, useRef } from 'react';
-import { View, Text, TextInput, Pressable, Animated, Dimensions, Modal, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, Animated, Dimensions, Modal, ScrollView, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { T } from './theme';
 import { Ic } from './icons';
 
@@ -128,20 +128,35 @@ export function Toast({ msg }) {
   );
 }
 
-/* MIUI 底部弹层（translucent flags 让 Android 键盘 resize 正确作用于 Modal，避免输入框被挡） */
+/* MIUI 底部弹层
+ * 键盘避让：Android 的 RN Modal 是独立 window，softwareKeyboardLayoutMode 管不到它，
+ * KAV 在其中也不可靠——用 keyboardDidShow 的实际键盘高度手动把整个面板抬到键盘上方（iOS 仍走 KAV padding） */
 export function Sheet({ visible, onClose, children }) {
   const { height } = Dimensions.get('window');
+  const lift = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      if (Platform.OS === 'android') Animated.timing(lift, { toValue: -(e.endCoordinates.height - 24), duration: 180, useNativeDriver: true }).start();
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      Animated.timing(lift, { toValue: 0, duration: 180, useNativeDriver: true }).start();
+    });
+    return () => { show.remove(); hide.remove(); };
+  }, [lift]);
+  useEffect(() => { if (!visible) lift.setValue(0); }, [visible]);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,.4)', justifyContent: 'flex-end' }} onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ backgroundColor: T.bg, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: height * 0.82 }}>
-          <Pressable style={{ flex: 0 }} onPress={() => {}}>
-            <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 2 }}>
-              <View style={{ width: 38, height: 4.5, borderRadius: 99, backgroundColor: '#DFE2E7' }} />
-            </View>
-            <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 34 }} nestedScrollEnabled>{children}</ScrollView>
-          </Pressable>
-        </KeyboardAvoidingView>
+        <Animated.View style={{ transform: [{ translateY: lift }] }}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ backgroundColor: T.bg, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: height * 0.82 }}>
+            <Pressable style={{ flex: 0 }} onPress={() => {}}>
+              <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 2 }}>
+                <View style={{ width: 38, height: 4.5, borderRadius: 99, backgroundColor: '#DFE2E7' }} />
+              </View>
+              <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 34 }} nestedScrollEnabled>{children}</ScrollView>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Animated.View>
       </Pressable>
     </Modal>
   );

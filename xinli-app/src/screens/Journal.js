@@ -1,17 +1,18 @@
 /* 手帐：App 内文档引擎（store 为真相源， 文档/团子/ 为同步镜像） */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, TextInput, Modal, ScrollView, KeyboardAvoidingView, Platform, Alert, Animated, Dimensions, Easing } from 'react-native';
-import { Card, Btn, MarkdownText } from '../ui';
+import { Card, Btn, MarkdownText, ActionSheet, InputSheet } from '../ui';
 import { Ic } from '../icons';
 import { T } from '../theme';
 import { useStore, setState, fmtDate } from '../store';
 import { writeMemoryFile, exportAll, ensureExportDir } from '../exporter';
 import { deleteJob, tidyMemory } from '../pipeline';
 
-/* 图标配色：不同文档类型的柔和底色 */
+/* 图标配色：不同文档类型的柔和底色（颜色即分组语义：橙=学习材料，紫=生活面，绿=小结） */
 const DOC_STYLE = {
   profile: { icon: 'user', bg: T.purpleSoft, fg: T.purple },
   note: { icon: 'book', bg: T.orangeSoft, fg: T.orangeDeep },
+  casual: { icon: 'mood', bg: T.purpleSoft, fg: T.purple },
   weekly: { icon: 'calendar', bg: T.greenSoft, fg: T.green },
   daily: { icon: 'calendar', bg: T.greenSoft, fg: T.green },
   monthly: { icon: 'layers', bg: T.purpleSoft, fg: T.purple },
@@ -20,12 +21,15 @@ const DOC_STYLE = {
   archive_doc: { icon: 'doc', bg: T.blueSoft, fg: T.blue },
 };
 
+/* 什么算课程：有课名归属的学习笔记。键名为「日常」的生活记录单独成组（用户可重命名改变归属） */
+const isCasual = (course) => course === '日常' || course === '日常随笔';
+
 /* 把 store 摊平成文档列表 */
 function buildDocs(s) {
   const docs = [];
   if (s.profile && s.profile.text) docs.push({ key: 'profile', type: 'profile', title: '我的画像', sub: `${s.profile.text.length}字 · 滚动更新`, body: s.profile.text, editable: true });
   Object.entries(s.courseNotes || {}).forEach(([k, v]) => {
-    docs.push({ key: `note-${k}`, type: 'note', title: k, sub: `课程笔记 · ${fmtDate(v.updatedAt || Date.now())}`, body: v.content, editable: true, course: k });
+    docs.push({ key: `note-${k}`, type: isCasual(k) ? 'casual' : 'note', title: k, sub: `${isCasual(k) ? '日常随笔' : '课程笔记'} · ${fmtDate(v.updatedAt || Date.now())}`, body: v.content, editable: true, course: k });
   });
   (s.weeklies || []).forEach((w) => docs.push({ key: `wk-${w.range}`, type: 'weekly', title: `周记 ${w.range}`, sub: '夜间自动压缩', body: w.summary }));
   (s.monthlies || []).forEach((m) => docs.push({ key: `mo-${m.range}`, type: 'monthly', title: `月结 ${m.range}`, sub: '长期沉淀', body: m.summary }));
@@ -52,7 +56,8 @@ function MemoryLayers({ toast }) {
   const s = useStore();
   const [busy, setBusy] = useState(false);
   const hot = s.jobs.filter((j) => j.createdAt > Date.now() - 7 * 864e5).length;
-  const warmNotes = Object.keys(s.courseNotes || {}).length;
+  const warmNotes = Object.keys(s.courseNotes || {}).filter((k) => !isCasual(k)).length;
+  const casualNotes = Object.keys(s.courseNotes || {}).filter((k) => isCasual(k)).length;
   const warmCards = s.cards.filter((c) => c.status === 'active').length;
   const dy = (s.dailies || []).length, wk = (s.weeklies || []).length, mo = (s.monthlies || []).length;
   const tidy = async () => {
@@ -86,7 +91,7 @@ function MemoryLayers({ toast }) {
         </Pressable>
       </View>
       {row('sparkle', '工作层', `近7天记录 ${hot} 条 · 待办 ${s.todos.filter((t) => !t.done && !t.archived).length} 件`, T.orangeDeep, T.orangeSoft)}
-      {row('book', '知识层', `课程笔记 ${warmNotes} 门 · 活跃卡片 ${warmCards} 张`, T.green, T.greenSoft)}
+      {row('book', '知识层', `课程笔记 ${warmNotes} 门${casualNotes ? ` · 随笔 ${casualNotes} 篇` : ''} · 活跃卡片 ${warmCards} 张`, T.green, T.greenSoft)}
       {row('box', '沉淀层', `日结 ${dy} · 周结 ${wk} · 月结 ${mo}`, T.purple, T.purpleSoft)}
       <View style={{ borderTopWidth: 0.5, borderTopColor: T.line, marginTop: 6, paddingTop: 8 }}>
         <Text style={{ fontSize: 10.5, color: T.sub, lineHeight: 16 }}>
@@ -128,11 +133,14 @@ export default function Journal({ toast, goAsk }) {
   const [reader, setReader] = useState(null);   // doc
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  const [noteMenu, setNoteMenu] = useState(null); // note/casual 卡的 ⋯ 菜单
+  const [rename, setRename] = useState(null);     // 正在重命名的笔记
 
   const docs = useMemo(() => buildDocs(s), [s]);
-  const CHIPS = ['全部', '课程', '画像', '小结', '档案'];
+  const CHIPS = ['全部', '课程', '随笔', '画像', '小结', '档案'];
   const filtered = docs.filter((d) => {
     if (chip === '课程' && d.type !== 'note') return false;
+    if (chip === '随笔' && d.type !== 'casual') return false;
     if (chip === '画像' && d.type !== 'profile') return false;
     if (chip === '小结' && !['daily', 'weekly', 'monthly'].includes(d.type)) return false;
     if (chip === '档案' && d.type !== 'archive') return false;
@@ -140,10 +148,42 @@ export default function Journal({ toast, goAsk }) {
     return true;
   });
 
+  /* 笔记重命名（改变归属：改成课程名→课程笔记组，改成「日常」→日常随笔组）与删除 */
+  const renameNote = (oldName, newName) => {
+    if (!newName.trim() || newName.trim() === oldName) return;
+    setState((st) => {
+      const { [oldName]: val, ...rest } = st.courseNotes || {};
+      return { ...st, courseNotes: { [newName.trim()]: val, ...rest } };
+    });
+    setReader(null);
+    toast(`已重命名为「${newName.trim()}」`);
+    writeMemoryFile().catch(() => {});
+  };
+  const deleteNote = (name) => {
+    setState((st) => { const n = { ...st.courseNotes }; delete n[name]; return { ...st, courseNotes: n }; });
+    setReader(null);
+    toast('已删除');
+    writeMemoryFile().catch(() => {});
+  };
+  const noteMenuSheet = (
+    <ActionSheet visible={!!noteMenu} onClose={() => setNoteMenu(null)} title={noteMenu ? noteMenu.title : ''}
+      options={noteMenu ? [
+        { icon: 'pencil', label: '重命名（改变归属）', onPress: () => setRename(noteMenu) },
+        { icon: 'trash', label: '删除这份笔记', tone: 'danger', onPress: () => {
+          const name = noteMenu.course;
+          setNoteMenu(null);
+          Alert.alert(`删除「${name}」？`, '笔记内容将一并删除，不可恢复', [
+            { text: '取消', style: 'cancel' },
+            { text: '删除', style: 'destructive', onPress: () => deleteNote(name) },
+          ]);
+        } },
+      ] : []} />
+  );
+
   const saveEdit = async () => {
     if (!reader) return;
     if (reader.type === 'profile') setState((st) => ({ ...st, profile: { text: draft, updatedAt: Date.now() } }));
-    if (reader.type === 'note') setState((st) => ({ ...st, courseNotes: { ...st.courseNotes, [reader.course]: { content: draft, updatedAt: Date.now() } } }));
+    if (reader.type === 'note' || reader.type === 'casual') setState((st) => ({ ...st, courseNotes: { ...st.courseNotes, [reader.course]: { content: draft, updatedAt: Date.now() } } }));
     setEditing(false);
     toast('已保存（并同步到记忆基准）');
     try { await writeMemoryFile(); } catch (_) {}
@@ -184,7 +224,7 @@ export default function Journal({ toast, goAsk }) {
 
       <ScrollView style={{ flex: 1, marginTop: 2 }} contentContainerStyle={{ paddingBottom: 170 }}>
         {filtered.length ? (() => {
-          let shownNotes = false, shownSum = false, lastDay = '';
+          let shownNotes = false, shownCasual = false, shownSum = false, lastDay = '';
           return filtered.map((d) => {
             const st = DOC_STYLE[d.type === 'archive' ? `archive_${d.iconKind}` : d.type] || DOC_STYLE.archive_doc;
             const els = [];
@@ -196,6 +236,7 @@ export default function Journal({ toast, goAsk }) {
               </View>
             );
             if (d.type === 'note' && !shownNotes) { shownNotes = true; els.push(label('lb-note', '课程笔记')); }
+            if (d.type === 'casual' && !shownCasual) { shownCasual = true; els.push(label('lb-casual', '日常随笔')); }
             if (['daily', 'weekly', 'monthly'].includes(d.type) && !shownSum) { shownSum = true; els.push(label('lb-sum', '小结')); }
             if (d.type === 'archive' && d.job) {
               const dd = new Date(d.job.createdAt);
@@ -204,6 +245,7 @@ export default function Journal({ toast, goAsk }) {
             }
             els.push(
               <Pressable key={d.key} onPress={() => { setReader(d); setEditing(false); }}
+                onLongPress={d.course ? () => setNoteMenu(d) : undefined} delayLongPress={350}
                 android_ripple={{ color: 'rgba(60,40,20,0.05)', foreground: true }}
                 style={{ borderRadius: T.radius }}>
                 <Card style={{ paddingVertical: 12 }}>
@@ -248,6 +290,11 @@ export default function Journal({ toast, goAsk }) {
                   </View>;
                 })()}
                 <Text style={{ fontSize: 17, fontWeight: '800', color: T.text, flex: 1 }} numberOfLines={1}>{reader.title}</Text>
+                {reader.course ? (
+                  <Pressable onPress={() => setNoteMenu(reader)} hitSlop={8} style={({ pressed }) => [{ backgroundColor: '#fff', borderRadius: 99, padding: 8 }, pressed && { opacity: 0.6 }]}>
+                    <Ic name="dots" size={16} color={T.sub} />
+                  </Pressable>
+                ) : null}
               </View>
               <Text style={{ fontSize: 10.5, color: T.sub, marginBottom: 8 }}>{reader.sub}{reader.editable ? ' · 可编辑' : ' · 只读'}</Text>
               <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 90 }}>
@@ -295,6 +342,11 @@ export default function Journal({ toast, goAsk }) {
           ) : null}
         </KeyboardAvoidingView>
       </PushModal>
+
+      {noteMenuSheet}
+      <InputSheet visible={!!rename} onClose={() => setRename(null)} title="重命名笔记" initial={rename ? rename.course : ''}
+        placeholder="改成课程名（如：心理学导论）或「日常」"
+        onSubmit={(v) => { if (rename) renameNote(rename.course, v); }} />
     </View>
   );
 }
