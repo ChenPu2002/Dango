@@ -414,7 +414,7 @@ export default function Today({ toast, goAsk, goJournal }) {
       <Section title="今日记录" right={todayJobs.length ? `今日 ${todayJobs.length} 条` : ''}>
         {todayJobs.length ? (
           <View style={{ marginTop: 4 }}>
-            {todayJobs.slice(0, 8).map((j) => <Entry key={j.id} j={j} onMenu={setMenu} />)}
+            {todayJobs.slice(0, 8).map((j) => <Entry key={j.id} j={j} onMenu={(job) => setMenu({ job })} />)}
             {todayJobs.length > 8 ? (
               <Pressable onPress={goJournal} style={{ alignSelf: 'center', padding: 8 }}>
                 <Text style={{ fontSize: 12, color: T.orangeDeep, fontWeight: '700' }}>更多历史 → 手帐</Text>
