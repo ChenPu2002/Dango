@@ -29,6 +29,9 @@ jobs:
         working-directory: xinli-app
         run: npm ci --no-audit --no-fund
 
+      - name: 生成 secrets 占位（密钥不入仓库；App 内「我的」页配置）
+        run: cp xinli-app/src/secrets.example.js xinli-app/src/secrets.js
+
       - name: 构建 APK
         working-directory: xinli-app/android
         run: ./gradlew assembleRelease -x lint --stacktrace -PreactNativeArchitectures=arm64-v8a
