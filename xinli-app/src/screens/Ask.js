@@ -171,6 +171,9 @@ export default function Ask({ toast, prefill, clearPrefill }) {
   /* 智能跟随：只有用户本来就在底部附近（<300px）时，内容变化才跟随滚动——
    * 展开历史工具卡/回看旧消息时不再被强行拽到底部 */
   const nearBottomRef = useRef(true);
+  /* 初次渲染/切换会话：直接定位到底（无滚动动画），之后才允许动画跟随 */
+  const jumpRef = useRef(true);
+  useEffect(() => { jumpRef.current = true; }, [cur && cur.id]);
   const sessions = s.sessions || [];
   const cur = sessions.find((x) => x.id === s.currentSessionId) || sessions[0];
   const chats = (cur && cur.messages) || [];
@@ -193,11 +196,6 @@ export default function Ask({ toast, prefill, clearPrefill }) {
   useEffect(() => { if (cur) pruneEmpty(cur.id); /* eslint-disable-line */ }, []);
 
   useEffect(() => { if (prefill) { setQ(prefill); clearPrefill(); } }, [prefill]);
-
-  useEffect(() => {
-    const t = setTimeout(() => scrollRef.current && scrollRef.current.scrollToEnd({ animated: true }), 120);
-    return () => clearTimeout(t);
-  }, [chats.length, running]);
 
   const patchCur = (fn) => setState((st) => ({
     ...st,
@@ -280,7 +278,14 @@ export default function Ask({ toast, prefill, clearPrefill }) {
             nearBottomRef.current = contentSize.height - contentOffset.y - layoutMeasurement.height < 300;
           }}
           scrollEventThrottle={120}
-          onContentSizeChange={() => { if (nearBottomRef.current) scrollRef.current && scrollRef.current.scrollToEnd({ animated: true }); }} keyboardShouldPersistTaps="handled">
+          onContentSizeChange={() => {
+            if (jumpRef.current) {
+              jumpRef.current = false;
+              scrollRef.current && scrollRef.current.scrollToEnd({ animated: false }); /* 直接显示最底部 */
+            } else if (nearBottomRef.current) {
+              scrollRef.current && scrollRef.current.scrollToEnd({ animated: true });
+            }
+          }} keyboardShouldPersistTaps="handled">
           {!chats.length ? (
             <Card style={{ alignItems: 'center', paddingVertical: 26 }}>
               <View style={{ width: 52, height: 52, borderRadius: 99, backgroundColor: T.orangeSoft, alignItems: 'center', justifyContent: 'center' }}>
