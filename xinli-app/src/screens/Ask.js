@@ -168,6 +168,9 @@ export default function Ask({ toast, prefill, clearPrefill }) {
   const [stopping, setStopping] = useState(false);
   const cancelRef = useRef(false);
   const scrollRef = useRef(null);
+  /* 智能跟随：只有用户本来就在底部附近（<300px）时，内容变化才跟随滚动——
+   * 展开历史工具卡/回看旧消息时不再被强行拽到底部 */
+  const nearBottomRef = useRef(true);
   const sessions = s.sessions || [];
   const cur = sessions.find((x) => x.id === s.currentSessionId) || sessions[0];
   const chats = (cur && cur.messages) || [];
@@ -272,7 +275,12 @@ export default function Ask({ toast, prefill, clearPrefill }) {
         </View>
 
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }}
-          onContentSizeChange={() => scrollRef.current && scrollRef.current.scrollToEnd({ animated: true })} keyboardShouldPersistTaps="handled">
+          onScroll={(e) => {
+            const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+            nearBottomRef.current = contentSize.height - contentOffset.y - layoutMeasurement.height < 300;
+          }}
+          scrollEventThrottle={120}
+          onContentSizeChange={() => { if (nearBottomRef.current) scrollRef.current && scrollRef.current.scrollToEnd({ animated: true }); }} keyboardShouldPersistTaps="handled">
           {!chats.length ? (
             <Card style={{ alignItems: 'center', paddingVertical: 26 }}>
               <View style={{ width: 52, height: 52, borderRadius: 99, backgroundColor: T.orangeSoft, alignItems: 'center', justifyContent: 'center' }}>

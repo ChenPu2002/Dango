@@ -6,7 +6,7 @@ import { Card, Section, Chip, ActionSheet, Sheet, Btn, PulseDot, MarkdownText } 
 import { Ic } from '../icons';
 import { T } from '../theme';
 import { useStore, setState, uid, fmtTime, fmtDate, dueLabel, dayStart, todayKeyISO } from '../store';
-import { deleteJob, updateTodo, deleteTodo, toggleTodo, retryJob } from '../pipeline';
+import { deleteJob, updateTodo, deleteTodo, toggleTodo, retryJob, editRecordText } from '../pipeline';
 
 const KIND = { audio: { icon: 'mic' }, photo: { icon: 'camera' }, doc: { icon: 'doc' } };
 
@@ -28,8 +28,23 @@ function PlayBtn({ uri }) {
 function Entry({ j, onMenu }) {
   const [open, setOpen] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
+  const [edit, setEdit] = useState(false);
+  const [draftSum, setDraftSum] = useState('');
+  const [draftPts, setDraftPts] = useState('');
   const ex = j.extract;
   const processing = j.status !== 'done';
+  const openEdit = () => {
+    setDraftSum((ex && ex.summary) || '');
+    setDraftPts(((ex && ex.points) || []).join('\n'));
+    setEdit(true);
+  };
+  const saveEdit = () => {
+    editRecordText(j.id, {
+      summary: draftSum.trim(),
+      points: draftPts.split('\n').map((p) => p.trim()).filter(Boolean),
+    });
+    setEdit(false);
+  };
   return (
     <View style={{ position: 'relative', marginBottom: 10, paddingLeft: 20 }}>
       <View style={{ position: 'absolute', left: 0, top: 18, width: 10, height: 10, borderRadius: 99, backgroundColor: '#fff', borderWidth: 2.5, borderColor: processing ? '#C6CBD2' : T.orange }} />
@@ -77,8 +92,23 @@ function Entry({ j, onMenu }) {
                   {showRaw ? <Text style={{ fontSize: 11.5, color: T.sub, lineHeight: 19, marginTop: 6 }}>{j.asrText}</Text> : null}
                 </Pressable>
               ) : null}
+              <Pressable onPress={openEdit} hitSlop={6} style={{ marginTop: 10, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center' }}>
+                <Ic name="pencil" size={12} color={T.orangeDeep} />
+                <Text style={{ fontSize: 11.5, fontWeight: '700', color: T.orangeDeep, marginLeft: 4 }}>编辑正文</Text>
+              </Pressable>
             </View>
           ) : null}
+          {/* 订正 AI 提炼的正文：摘要 + 关键点（一行一条） */}
+          <Sheet visible={edit} onClose={() => setEdit(false)}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: T.text, marginBottom: 12 }}>编辑记录正文</Text>
+            <Text style={{ fontSize: 11.5, color: T.sub, marginBottom: 6 }}>摘要</Text>
+            <TextInput value={draftSum} onChangeText={setDraftSum} multiline
+              style={{ backgroundColor: '#fff', borderRadius: 12, padding: 12, fontSize: 13, color: T.text, minHeight: 84, textAlignVertical: 'top' }} />
+            <Text style={{ fontSize: 11.5, color: T.sub, marginTop: 10, marginBottom: 6 }}>关键点（一行一条）</Text>
+            <TextInput value={draftPts} onChangeText={setDraftPts} multiline
+              style={{ backgroundColor: '#fff', borderRadius: 12, padding: 12, fontSize: 13, color: T.text, minHeight: 100, textAlignVertical: 'top' }} />
+            <Btn text="保存" onPress={saveEdit} style={{ marginTop: 14 }} />
+          </Sheet>
         </Card>
       </Pressable>
     </View>

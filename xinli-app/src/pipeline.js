@@ -534,6 +534,11 @@ export function updateTodo(id, patch = {}) {
   }) }));
 }
 export function toggleTodo(id) { setState((s) => ({ ...s, todos: s.todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t)) })); }
+/* 编辑记录正文（摘要 + 关键点，一行一条）：AI 提炼不准时用户可手动订正 */
+export function editRecordText(id, { summary, points }) {
+  setState((s) => ({ ...s, jobs: s.jobs.map((j) => (j.id === id ? { ...j, extract: { ...j.extract, summary, points } } : j)) }));
+  writeMemoryFile().catch(() => {});
+}
 
 /* 删除一条记录（可选连带其生成内容）。
  * 隐私要求：withDerived 时必须清除一切衍生物 —— 卡片/待办/心情/云文档/日结/课程笔记与画像（LLM 从剩余记录重建） */
