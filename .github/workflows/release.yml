@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: xinli-app/package-lock.json
+
+      - name: 安装依赖
+        working-directory: xinli-app
+        run: npm ci --no-audit --no-fund
+
+      - name: 构建 APK
+        working-directory: xinli-app/android
+        run: ./gradlew assembleRelease -x lint
+
+      - name: 改名 APK
+        run: cp xinli-app/android/app/build/outputs/apk/release/app-release.apk "Dango-${{ github.ref_name }}.apk"
+
+      - name: 生成 Release Notes（上个 tag 以来的提交）
+        run: |
+          {
+            echo "## 更新内容"
+            echo ""
+            PREV=$(git describe --tags --abbrev=0 "${{ github.ref_name }}^" 2>/dev/null || true)
+            if [ -n "$PREV" ]; then
+              git log --oneline --no-decorate "$PREV..${{ github.ref_name }}"
+            else
+              git log --oneline --no-decorate "${{ github.ref_name }}"
+            fi
+          } > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
+      - name: 创建 Release 并上传 APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" "Dango-${{ github.ref_name }}.apk" \
+            --title "团子 ${{ github.ref_name }}" \
+            --notes-file RELEASE_NOTES.md
