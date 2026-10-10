@@ -20,6 +20,8 @@ const TOOL_META = {
   list_courses: { icon: 'book' },
   update_course_note: { icon: 'book' },
   delete_course_note: { icon: 'trash' },
+  rename_course: { icon: 'pencil' },
+  rename_record: { icon: 'pencil' },
   get_todos: { icon: 'check' },
   get_dailies: { icon: 'calendar' },
   get_moods: { icon: 'mood' },
@@ -88,6 +90,8 @@ function ActionChips({ actions }) {
       case 'update_profile': return '画像已更新';
       case 'update_course_note': return `《${g.course || ''}》笔记已更新`;
       case 'delete_course_note': return `《${r.deleted || g.course || ''}》笔记已删除`;
+      case 'rename_course': return `课程已改名：《${r.from || g.course || ''}》→《${r.to || g.new_name || ''}》`;
+      case 'rename_record': return `记录已改名：${r.renamed || g.title || ''}`;
       default: return null;
     }
   };

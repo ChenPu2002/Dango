@@ -202,8 +202,15 @@ export default function Journal({ toast, goAsk }) {
 
   const saveEdit = async () => {
     if (!reader) return;
-    if (reader.type === 'profile') setState((st) => ({ ...st, profile: { text: draft, updatedAt: Date.now() } }));
-    if (reader.type === 'note' || reader.type === 'casual') setState((st) => ({ ...st, courseNotes: { ...st.courseNotes, [reader.course]: { content: draft, updatedAt: Date.now() } } }));
+    /* 写入 store 后同步刷新阅读器快照（否则退出编辑态仍显示旧文，看起来"没保存"） */
+    if (reader.type === 'profile') {
+      setState((st) => ({ ...st, profile: { text: draft, updatedAt: Date.now() } }));
+      setReader({ ...reader, body: draft, sub: `${draft.length}字 · 滚动更新` });
+    }
+    if (reader.type === 'note' || reader.type === 'casual') {
+      setState((st) => ({ ...st, courseNotes: { ...st.courseNotes, [reader.course]: { content: draft, updatedAt: Date.now() } } }));
+      setReader({ ...reader, body: draft });
+    }
     setEditing(false);
     toast('已保存（并同步到记忆基准）');
     try { await writeMemoryFile(); } catch (_) {}

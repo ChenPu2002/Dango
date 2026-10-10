@@ -22,16 +22,16 @@ const t1 = todos.find((t) => t.text.includes('论文'));
 const t1raw = getState().todos.find((t) => t.text.includes('论文'));
 check('add_todo + due 解析', !!t1 && t1.due === '周五' && t1raw.dueAt > 0 && !!t1.dueText, JSON.stringify(t1 || {}));
 const up = await executeTool('update_todo', { id: t1.id, due: '明天' });
-const t1b = await executeTool('get_todos', {}).find((t) => t.id === t1.id);
+const t1b = (await executeTool('get_todos', {})).find((t) => t.id === t1.id);
 check('update_todo 改截止', up.ok && t1b.due === '明天', `${t1b.due} dueAt=${t1b.dueAt}`);
 await executeTool('update_todo', { id: t1.id, text: '周五交论文终稿' });
-check('update_todo 改文本', await executeTool('get_todos', {}).some((t) => t.id === t1.id && t.text.includes('终稿')));
+check('update_todo 改文本', (await executeTool('get_todos', {})).some((t) => t.id === t1.id && t.text.includes('终稿')));
 await executeTool('complete_todo', { text: '终稿' });
-check('complete_todo 模糊匹配', await executeTool('get_todos', { pending_only: false }).find((t) => t.id === t1.id).done === true);
+check('complete_todo 模糊匹配', (await executeTool('get_todos', { pending_only: false })).find((t) => t.id === t1.id).done === true);
 const ro = await executeTool('reopen_todo', { id: t1.id });
-check('reopen_todo 恢复', ro.ok && await executeTool('get_todos', { pending_only: true }).some((t) => t.id === t1.id));
+check('reopen_todo 恢复', ro.ok && (await executeTool('get_todos', { pending_only: true })).some((t) => t.id === t1.id));
 const dl = await executeTool('delete_todo', { id: t1.id });
-check('delete_todo 删除', dl.ok && !await executeTool('get_todos', { pending_only: false }).some((t) => t.id === t1.id), dl.deleted);
+check('delete_todo 删除', dl.ok && !(await executeTool('get_todos', { pending_only: false })).some((t) => t.id === t1.id), dl.deleted);
 
 /* ---- 卡片 CRUD ---- */
 await executeTool('add_card', { q: '泰勒公式的作用？', a: '多项式局部逼近', topic: '高等数学' });
@@ -42,7 +42,7 @@ await executeTool('update_card', { id: c1.id, a: '用多项式逼近复杂函数
 check('update_card 订正', getState().cards.find((c) => c.id === c1.id).a.includes('余项'));
 await executeTool('archive_card', { id: c1.id });
 check('archive_card 归档', getState().cards.find((c) => c.id === c1.id).status === 'archived');
-check('归档后 active_only 过滤', !await executeTool('get_cards', {}).some((c) => c.id === c1.id));
+check('归档后 active_only 过滤', !(await executeTool('get_cards', {})).some((c) => c.id === c1.id));
 await executeTool('delete_card', { id: c1.id });
 check('delete_card 彻底删除', !getState().cards.some((c) => c.id === c1.id));
 
@@ -51,8 +51,18 @@ await executeTool('update_course_note', { course: '高等数学', full: '极限�
 check('update_course_note', getState().courseNotes['高等数学'].content.includes('期中'));
 const lc = await executeTool('list_courses', {});
 check('list_courses', Array.isArray(lc) && lc.some((c) => c.course === '高等数学'));
-const dcn = await executeTool('delete_course_note', { course: '高等数学' });
-check('delete_course_note', dcn.ok && !getState().courseNotes['高等数学']);
+const rcn = await executeTool('rename_course', { course: '高等数学', new_name: '高数（下）' });
+check('rename_course 重命名并保留内容', rcn.ok && !!getState().courseNotes['高数（下）'] && !getState().courseNotes['高等数学'] && getState().courseNotes['高数（下）'].content.includes('期中'), `${rcn.from}→${rcn.to}`);
+const dcx = await executeTool('delete_course_note', { course: '高数（下）' });
+check('delete_course_note', dcx.ok && !getState().courseNotes['高数（下）']);
+
+/* ---- 记录标题 ---- */
+setState((st) => ({ ...st, jobs: [{ id: 'jx1', kind: 'audio', title: '旧标题', status: 'done', createdAt: Date.now(), extract: { title: '旧标题', summary: 's' } }] }));
+const rr = await executeTool('rename_record', { id: 'jx1', title: '新标题' });
+const jx = getState().jobs.find((j) => j.id === 'jx1');
+check('rename_record 同步改 job.title 与 extract.title', rr.ok && jx.title === '新标题' && jx.extract.title === '新标题');
+const rr2 = await executeTool('rename_record', { id: 'nope', title: 'x' });
+check('rename_record 不存在的 id 报错', !!rr2.error);
 
 /* ---- 结果人读化：无 id / dueAt 等机器字段 ---- */
 await executeTool('add_todo', { text: '给妈妈打电话', due: '周日' });

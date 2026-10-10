@@ -71,7 +71,7 @@ check('search_memory 覆盖卡片（含已归档，知识不丢）', (sr2.hits |
 const gm = await executeTool('get_moods', {});
 check('get_moods 返回心情', Array.isArray(gm) && gm.length === 1 && gm[0].score === 4, JSON.stringify(gm));
 await executeTool('add_todo', { text: '测试：明天取快递' });
-check('add_todo 工具写入', await executeTool('get_todos', { pending_only: true }).some((t) => t.text.includes('取快递')));
+check('add_todo 工具写入', (await executeTool('get_todos', { pending_only: true })).some((t) => t.text.includes('取快递')));
 
 console.log(fail ? `\n❌ ${fail} 项失败` : '\n全部通过 🎉');
 process.exit(fail ? 1 : 0);

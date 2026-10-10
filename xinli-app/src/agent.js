@@ -18,6 +18,8 @@ export const TOOLS = [
   { type: 'function', function: { name: 'list_courses', description: '列出全部课程笔记目录（课程名+字数+更新时间）' } },
   { type: 'function', function: { name: 'update_course_note', description: '更新某课程笔记（完整重写版，≤150字）', parameters: { type: 'object', properties: { course: { type: 'string' }, full: { type: 'string' } }, required: ['course', 'full'] } } },
   { type: 'function', function: { name: 'delete_course_note', description: '删除某课程的整份笔记（用户明确要求时才用）', parameters: { type: 'object', properties: { course: { type: 'string' } }, required: ['course'] } } },
+  { type: 'function', function: { name: 'rename_course', description: '重命名课程（连同其笔记归属，如「高数」→「高等数学」）', parameters: { type: 'object', properties: { course: { type: 'string', description: '现有课程名' }, new_name: { type: 'string', description: '新课程名' } }, required: ['course', 'new_name'] } } },
+  { type: 'function', function: { name: 'rename_record', description: '修改某条记录的标题（今日记录/手帐档案里的时间线条目）', parameters: { type: 'object', properties: { id: { type: 'string', description: '记录 id，先用 list_records 获取' }, title: { type: 'string', description: '新标题，3-12 字' } }, required: ['id', 'title'] } } },
   { type: 'function', function: { name: 'get_todos', description: '获取待办清单（含id，供修改/删除/完成引用）', parameters: { type: 'object', properties: { pending_only: { type: 'boolean' } } } } },
   { type: 'function', function: { name: 'add_todo', description: '添加一条待办（用户口头交办时用）', parameters: { type: 'object', properties: { text: { type: 'string' }, due: { type: 'string', description: '截止，支持 周五/明天/11月2日 等，可空' } }, required: ['text'] } } },
   { type: 'function', function: { name: 'update_todo', description: '修改一条待办（改内容或截止时间）。先用 get_todos 拿 id', parameters: { type: 'object', properties: { id: { type: 'string' }, text: { type: 'string', description: '新内容，可空=不改' }, due: { type: 'string', description: '新截止（支持 周五/明天/11月2日）；传 "无" 清除截止' } }, required: ['id'] } } },
@@ -49,7 +51,7 @@ const AGENT_SYS = `你是「团团」，「团子」App 里用户手机上的私
 1. 先用工具查证，再回答；个人记忆用 search_memory 等，记忆里没有就明说，禁止编造；
 2. 时效性/外部信息（新闻、百科、不确定的常识）→ 先 web_search，需要细节再 web_fetch，回答注明〔来源: 网页标题〕；
 3. 回答引用来源，格式如〔10.7 高数录音〕；
-4. 待办与手帐支持全套增删改查：添加/修改（含改截止）/完成/恢复/删除待办，新增/订正/归档/删除卡片，读取/重写/删除课程笔记——用户要求变更时直接调工具执行并告知结果，先查后改（拿 id 再操作）；
+4. 待办与手帐支持全套增删改查：添加/修改（含改截止）/完成/恢复/删除待办，新增/订正/归档/删除卡片，读取/重写/删除/重命名课程笔记，修改记录标题（rename_record）——用户要求变更时直接调工具执行并告知结果，先查后改（拿 id 再操作）；
 5. 对话中获得新的长期信息（习惯/课程/考试）→ 调 update_profile / update_course_note 沉淀；
 6. 删除类操作必须先向用户复述对象确认过再做（对话上文用户已明确说删即可直接执行）；
 7. 中文，口语化，简洁（≤6句），除非用户要求详细。`;
@@ -208,6 +210,31 @@ export async function executeTool(name, args) {
       setState((s2) => { const n = { ...s2.courseNotes }; delete n[key]; return { ...s2, courseNotes: n }; });
       writeMemoryFile().catch(() => {});
       return { ok: true, deleted: key };
+    }
+    case 'rename_course': {
+      const old = Object.keys(st.courseNotes || {}).find((k) => k.includes(String(A.course || '')));
+      const nw = String(A.new_name || '').trim();
+      if (!old) return { error: '无该课程笔记' };
+      if (!nw || nw === old) return { error: '新名称无效' };
+      setState((s2) => {
+        const { [old]: val, ...rest } = s2.courseNotes;
+        return { ...s2, courseNotes: { [nw]: val, ...rest } };
+      });
+      writeMemoryFile().catch(() => {});
+      return { ok: true, from: old, to: nw };
+    }
+    case 'rename_record': {
+      const j = st.jobs.find((x) => x.id === A.id);
+      if (!j) return { error: '记录不存在，请先 list_records 查 id' };
+      const nw = String(A.title || '').trim().slice(0, 24);
+      if (!nw) return { error: '标题为空' };
+      setState((s2) => ({ ...s2, jobs: s2.jobs.map((x) => {
+        if (x.id !== A.id) return x;
+        const next = { ...x, title: nw };
+        if (x.extract) next.extract = { ...x.extract, title: nw };
+        return next;
+      }) }));
+      return { ok: true, renamed: nw };
     }
     case 'update_todo': {
       const t = st.todos.find((x) => x.id === A.id);
@@ -377,6 +404,8 @@ function briefOf(name, args, result) {
       case 'list_courses': return `查看课程目录 ${Array.isArray(result) ? result.length : 0} 门`;
       case 'update_course_note': return `已更新「${args.course}」笔记`;
       case 'delete_course_note': return `已删除「${(result && result.deleted) || args.course}」笔记`;
+      case 'rename_course': return `课程改名「${(result && result.from) || args.course}」→「${(result && result.to) || args.new_name}」`;
+      case 'rename_record': return `记录已改名为「${(result && result.renamed) || args.title}」`;
       case 'get_todos': return '查看待办';
       case 'get_dailies': return '查看日结';
       case 'get_moods': return '查看心情记录';
@@ -438,6 +467,10 @@ export function humanizeResult(name, result) {
         return (Array.isArray(R) ? R : []).map((c) => `《${c.course}》${c.chars}字 · ${c.updatedAt}更新`).join('\n') || '（暂无课程笔记）';
       case 'delete_course_note':
         return `已删除《${R.deleted}》笔记`;
+      case 'rename_course':
+        return `✓ 课程已改名：《${R.from}》→《${R.to}》`;
+      case 'rename_record':
+        return `✓ 记录已改名为「${R.renamed}」`;
       case 'get_todos':
         return (Array.isArray(R) ? R : []).map((t) => `${t.done ? '✓' : '•'} ${t.text}${t.dueText ? `（${t.dueText}）` : t.due ? `（截止 ${t.due}）` : ''}`).join('\n') || '（无待办）';
       case 'get_dailies':
